@@ -1,0 +1,76 @@
+erDiagram
+    RESOURCE {
+        string id PK
+        string name
+        string type
+        string status
+        number monthlyCost
+        string region
+    }
+
+    S3_BUCKET {
+        string id PK
+        string name
+        string currentTier
+        string recommendedTier
+        string size
+        number estimatedSavings
+        string lastAccessed
+    }
+
+    RECOMMENDATION {
+        string id PK
+        string resourceName
+        string resourceType
+        string currentTier
+        string recommendedTier
+        number estimatedSavings
+        string priority
+    }
+
+    ALERT {
+        string id PK
+        string title
+        string description
+        string severity
+        string timestamp
+        string resourceId FK
+    }
+
+    SERVER_COMPARISON {
+        string id PK
+        string provider
+        string instanceType
+        string cpu
+        string ram
+        string storage
+        number monthlyPrice
+        string region
+        boolean isBestChoice
+    }
+
+    MONTHLY_COST {
+        string month PK
+        number cost
+    }
+
+    RESOURCE_USAGE {
+        string name PK
+        number value
+        string color
+    }
+
+    DASHBOARD_SUMMARY {
+        number totalMonthlyCost
+        number costChange
+        number potentialSavings
+        number alertCount
+        string activeResources_JSON
+    }
+
+    %% Relationships (based on code/mocks)
+    S3_BUCKET ||--|| RESOURCE : "specialization (matches S3 resource id)"
+    ALERT }o--|| RESOURCE : "optional FK resourceId -> Resource.id"
+    RECOMMENDATION }o--|| RESOURCE : "references resourceName -> Resource.name (loose link)"
+    DASHBOARD_SUMMARY ||--o{ MONTHLY_COST : "aggregates monthly costs"
+    DASHBOARD_SUMMARY ||--o{ RESOURCE_USAGE : "aggregates resource usage"
