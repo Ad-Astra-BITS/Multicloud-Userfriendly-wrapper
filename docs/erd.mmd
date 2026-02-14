@@ -1,182 +1,76 @@
 erDiagram
-    USER {
-        string id PK
-        string email UK
-        string password_hash
-        string name
-        boolean two_factor_enabled
-        datetime created_at
-        datetime updated_at
-    }
-
-    USER_SETTINGS {
-        string user_id FK
-        boolean email_alerts
-        boolean cost_threshold_alerts
-        boolean weekly_report
-        boolean slack_integration
-        string slack_webhook_url
-        boolean dark_mode
-        boolean compact_view
-        string language
-        json notification_preferences
-    }
-
-    CLOUD_PROVIDER {
-        string id PK
-        string user_id FK
-        string provider_name "AWS|Azure|GCP|DigitalOcean"
-        string credentials_arn
-        string account_id
-        string region
-        boolean is_active
-        datetime connected_at
-        datetime last_sync
-    }
-
     RESOURCE {
-        string id PK "e.g., ec2-001, s3-001"
-        string user_id FK
-        string provider_id FK
+        string id PK
         string name
-        string type "EC2|S3|RDS|Lambda"
-        string status "running|stopped|warning|terminated"
-        decimal monthly_cost
+        string type
+        string status
+        number monthlyCost
         string region
-        json metadata
-        datetime created_at
-        datetime updated_at
     }
 
     S3_BUCKET {
         string id PK
-        string resource_id FK
-        string bucket_name UK
-        string current_tier "Standard|IA|Glacier|DeepArchive"
-        string recommended_tier
-        string size_gb
-        decimal estimated_savings
-        datetime last_accessed
-        json lifecycle_config
-        datetime created_at
+        string name
+        string currentTier
+        string recommendedTier
+        string size
+        number estimatedSavings
+        string lastAccessed
     }
 
     RECOMMENDATION {
         string id PK
-        string user_id FK
-        string resource_id FK
-        string resource_name
-        string resource_type "EC2|S3|RDS"
-        string current_tier
-        string recommended_tier
-        decimal estimated_savings
-        string description
-        string priority "high|medium|low"
-        string status "pending|applied|dismissed"
-        datetime created_at
-        datetime applied_at
+        string resourceName
+        string resourceType
+        string currentTier
+        string recommendedTier
+        number estimatedSavings
+        string priority
     }
 
     ALERT {
         string id PK
-        string user_id FK
-        string resource_id FK "nullable"
         string title
         string description
-        string severity "critical|warning|info"
-        boolean is_read
-        datetime timestamp
-        datetime created_at
+        string severity
+        string timestamp
+        string resourceId FK
     }
 
-    SERVER_COMPARISON_CACHE {
+    SERVER_COMPARISON {
         string id PK
-        string cache_key "e.g., 2-4-50"
-        string provider "AWS|Azure|GCP|DigitalOcean"
-        string instance_type
+        string provider
+        string instanceType
         string cpu
         string ram
         string storage
-        decimal monthly_price
+        number monthlyPrice
         string region
-        datetime updated_at
+        boolean isBestChoice
     }
 
     MONTHLY_COST {
-        string id PK
-        string user_id FK
-        string provider_id FK
-        string month "YYYY-MM"
-        decimal cost
-        json breakdown "service-level costs"
-        datetime created_at
+        string month PK
+        number cost
     }
 
     RESOURCE_USAGE {
-        string id PK
-        string user_id FK
-        string period "YYYY-MM"
-        string service_name "EC2|S3|RDS|Lambda"
-        decimal cost
-        string color_code
-        datetime created_at
+        string name PK
+        number value
+        string color
     }
 
     DASHBOARD_SUMMARY {
-        string user_id PK
-        decimal total_monthly_cost
-        decimal cost_change_percent
-        decimal potential_savings
-        int alert_count
-        int active_ec2_count
-        int active_s3_count
-        int active_rds_count
-        datetime last_updated
+        number totalMonthlyCost
+        number costChange
+        number potentialSavings
+        number alertCount
+        string activeResources_JSON
     }
 
-    KILL_SWITCH_EXECUTION {
-        string id PK
-        string user_id FK
-        string otp_hash
-        datetime initiated_at
-        datetime verified_at
-        datetime completed_at
-        string status "initiated|verified|executing|completed|failed"
-        int resources_destroyed
-        json execution_log
-    }
-
-    AUDIT_LOG {
-        string id PK
-        string user_id FK
-        string action_type
-        string resource_type
-        string resource_id
-        json request_data
-        json response_data
-        string ip_address
-        string user_agent
-        datetime timestamp
-    }
-
-    %% Relationships
-    USER ||--o{ USER_SETTINGS : "has"
-    USER ||--o{ CLOUD_PROVIDER : "owns"
-    USER ||--o{ RESOURCE : "owns"
-    USER ||--o{ RECOMMENDATION : "receives"
-    USER ||--o{ ALERT : "has"
-    USER ||--o{ MONTHLY_COST : "tracks"
-    USER ||--o{ RESOURCE_USAGE : "monitors"
-    USER ||--|| DASHBOARD_SUMMARY : "views"
-    USER ||--o{ KILL_SWITCH_EXECUTION : "initiates"
-    USER ||--o{ AUDIT_LOG : "generates"
-
-    CLOUD_PROVIDER ||--o{ RESOURCE : "hosts"
-    CLOUD_PROVIDER ||--o{ MONTHLY_COST : "bills"
-
-    RESOURCE ||--o| S3_BUCKET : "specializes"
-    RESOURCE ||--o{ RECOMMENDATION : "triggers"
-    RESOURCE ||--o{ ALERT : "generates"
-
-    RECOMMENDATION }o--|| RESOURCE : "references"
-    ALERT }o--o| RESOURCE : "optionally links to"
+    %% Relationships (based on code/mocks)
+    S3_BUCKET ||--|| RESOURCE : "specialization (matches S3 resource id)"
+    ALERT }o--|| RESOURCE : "optional FK resourceId -> Resource.id"
+    RECOMMENDATION }o--|| RESOURCE : "references resourceName -> Resource.name (loose link)"
+    DASHBOARD_SUMMARY ||--o{ MONTHLY_COST : "aggregates monthly costs"
+    DASHBOARD_SUMMARY ||--o{ RESOURCE_USAGE : "aggregates resource usage"
