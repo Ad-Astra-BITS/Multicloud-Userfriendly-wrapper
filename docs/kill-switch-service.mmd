@@ -1,0 +1,63 @@
+sequenceDiagram
+    actor User
+    participant FE as Frontend
+    participant Kill as Kill Switch API
+    participant DB as Database
+    participant Cache as Redis
+    participant Mail as Email Service
+    participant AWS as AWS SDK
+    participant Queue as Message Queue
+    participant Audit as Audit Service
+
+    Note over User, Audit: Phase 1: Initiation
+    User->>FE: Click "Destroy All Resources"
+    FE->>Kill: POST /api/kill-switch/initiate
+    Kill->>DB: Check kill switch status
+    DB-->>Kill: {enabled: true, cooldownExpired: true}
+    
+    Kill->>Kill: Generate 6-digit OTP
+    Kill->>Cache: SET kill_otp:{userId} = "123456" EX 300
+    Kill->>Mail: Send OTP email
+    Kill->>Audit: Log initiation attempt
+    Kill-->>FE: 200 OK {requiresOTP: true}
+
+    Note over User, Audit: Phase 2: Verification
+    User->>FE: Enter OTP "123456"
+    FE->>Kill: POST /api/kill-switch/verify {otp}
+    Kill->>Cache: GET kill_otp:{userId}
+    
+    alt OTP Invalid
+        Cache-->>Kill: Mismatch or expired
+        Kill->>Audit: Log failed attempt
+        Kill-->>FE: 401 Invalid OTP
+    else OTP Valid
+        Cache-->>Kill: Match
+        Kill->>DB: START TRANSACTION
+        Kill->>DB: Get all resources
+        DB-->>Kill: Resource list (EC2, S3, RDS)
+        
+        loop For Each Resource Type
+            Kill->>Queue: Publish bulk termination job
+        end
+        
+        Kill->>DB: INSERT kill_switch_execution
+        Kill->>DB: COMMIT
+        Kill-->>FE: 202 Accepted {jobId}
+        
+        Note over Queue, AWS: Background Worker
+        Queue->>Kill: Process EC2 terminations
+        Kill->>AWS: terminate_instances(ids)
+        AWS-->>Kill: Termination initiated
+        
+        Queue->>Kill: Process S3 deletions
+        Kill->>AWS: delete_bucket(bucket) [for each]
+        AWS-->>Kill: Buckets deleted
+        
+        Queue->>Kill: Process RDS deletions
+        Kill->>AWS: delete_db_instance(id)
+        AWS-->>Kill: Databases deleted
+        
+        Kill->>DB: UPDATE execution status
+        Kill->>Audit: Log complete destruction
+        Kill->>FE: WebSocket: "All resources destroyed"
+    end
