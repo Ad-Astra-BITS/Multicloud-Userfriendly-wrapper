@@ -1,0 +1,41 @@
+sequenceDiagram
+    actor User
+    participant FE as Frontend
+    participant Auth as Auth Service
+    participant DB as Database
+    participant Cache as Redis Cache
+    participant Mail as Email Service
+
+    Note over User, Mail: Login Flow
+    User->>FE: Enter credentials
+    FE->>Auth: POST /api/auth/login {email, password}
+    Auth->>DB: Query user by email
+    DB-->>Auth: User data + hashed password
+    Auth->>Auth: Verify password (bcrypt)
+    
+    alt Invalid Credentials
+        Auth-->>FE: 401 Unauthorized
+    else Valid Credentials
+        Auth->>Auth: Generate JWT token
+        Auth->>Cache: Store session (TTL: 24h)
+        Auth-->>FE: 200 OK {token, user}
+        
+        opt 2FA Enabled
+            Auth->>Auth: Generate 6-digit OTP
+            Auth->>Cache: Store OTP (TTL: 5min)
+            Auth->>Mail: Send OTP email
+            Auth-->>FE: 200 OK {requiresOTP: true}
+            
+            User->>FE: Enter OTP
+            FE->>Auth: POST /api/auth/verify-2fa {otp}
+            Auth->>Cache: Validate OTP
+            alt OTP Valid
+                Cache-->>Auth: Match
+                Auth->>Cache: Store validated session
+                Auth-->>FE: 200 OK {token, user}
+            else OTP Invalid
+                Cache-->>Auth: Mismatch
+                Auth-->>FE: 401 Invalid OTP
+            end
+        end
+    end

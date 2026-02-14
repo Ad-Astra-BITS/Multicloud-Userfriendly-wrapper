@@ -1,0 +1,39 @@
+sequenceDiagram
+    actor User
+    participant FE as Frontend
+    participant Analytics as Analytics API
+    participant DB as PostgreSQL
+    participant DW as Data Warehouse
+    participant AWS as AWS Cost Explorer
+    participant Cache as Redis
+
+    Note over User, Cache: Fetch Cost Data
+    User->>FE: View Analytics Page
+    FE->>Analytics: GET /api/analytics/costs?period=30d
+    Analytics->>Cache: Check cached metrics
+    
+    alt Cache Hit
+        Cache-->>Analytics: Cached data
+        Analytics-->>FE: 200 OK {monthlyCosts, breakdown}
+    else Cache Miss
+        Analytics->>DW: Query aggregated costs
+        DW-->>Analytics: Historical data
+        
+        par Fetch Current Period
+            Analytics->>AWS: get_cost_and_usage()
+            AWS-->>Analytics: Current month costs
+        and Aggregate Data
+            Analytics->>Analytics: Calculate trends, % changes
+        end
+        
+        Analytics->>Cache: Store (TTL: 1h)
+        Analytics-->>FE: 200 OK {data}
+    end
+
+    Note over User, Cache: Generate Report
+    User->>FE: Export monthly report
+    FE->>Analytics: POST /api/analytics/export {format: 'pdf'}
+    Analytics->>DW: Query detailed breakdown
+    DW-->>Analytics: Raw data
+    Analytics->>Analytics: Generate PDF report
+    Analytics-->>FE: 200 OK {downloadUrl}

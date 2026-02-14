@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant Source as Event Source
+    participant Queue as Message Queue
+    participant NotifyAPI as Notification API
+    participant DB as Database
+    participant Templates as Template Engine
+    participant Mail as Email Provider
+    participant Slack as Slack API
+    participant WebSocket as WS Server
+
+    Note over Source, WebSocket: Cost Alert Notification
+    Source->>Queue: Publish {type: 'cost_alert', threshold: 1000}
+    Queue->>NotifyAPI: Consume message
+    NotifyAPI->>DB: Get user preferences
+    DB-->>NotifyAPI: {emailEnabled: true, slackEnabled: true}
+    
+    par Email Notification
+        NotifyAPI->>Templates: Render email template
+        Templates-->>NotifyAPI: HTML content
+        NotifyAPI->>Mail: Send email
+        Mail-->>NotifyAPI: Message ID
+    and Slack Notification
+        NotifyAPI->>Slack: POST webhook {text}
+        Slack-->>NotifyAPI: 200 OK
+    and In-App Notification
+        NotifyAPI->>DB: INSERT notification
+        NotifyAPI->>WebSocket: Broadcast to user
+        WebSocket->>WebSocket: Push to connected clients
+    end
+    
+    NotifyAPI->>DB: Log notification sent

@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant API as Any API Service
+    participant Audit as Audit Service
+    participant DB as PostgreSQL
+    participant S3 as S3 Storage
+    participant Compliance as Compliance Engine
+
+    Note over API, Compliance: Log Action
+    API->>Audit: POST /internal/audit/log {action, userId, resource}
+    Audit->>DB: INSERT audit_log
+    Audit->>S3: Archive log (monthly batch)
+    Audit-->>API: Logged
+
+    Note over API, Compliance: Generate Compliance Report
+    participant Admin
+    Admin->>Audit: GET /api/audit/report?period=2024-01
+    Audit->>DB: Query audit_logs WHERE period
+    DB-->>Audit: Raw logs
+    Audit->>Compliance: Analyze for violations
+    Compliance-->>Audit: {violations, summary}
+    Audit->>Audit: Generate PDF report
+    Audit-->>Admin: 200 OK {reportUrl}
