@@ -1,0 +1,77 @@
+flowchart LR
+  subgraph Users
+    U[UsersAdmin]
+  end
+
+  subgraph CDN
+    CF[CloudFront]
+  end
+
+  subgraph Frontend
+    AMP[AmplifyHosting]
+  end
+
+  U --> CF --> AMP
+
+  subgraph API
+    APIGW[APIGateway]
+    LRec[Lambda_Recommendations]
+    LAlerts[Lambda_Alerts]
+    LAnalytics[Lambda_Analytics]
+    LCompare[Lambda_Compare]
+    LKill[Lambda_KillSwitch]
+  end
+
+  AMP --> APIGW
+  APIGW --> LRec
+  APIGW --> LAlerts
+  APIGW --> LAnalytics
+  APIGW --> LCompare
+  APIGW --> LKill
+
+  subgraph StorageDB
+    DynDB[DynamoDB]
+    S3[S3]
+    RDS[RDS]
+    Redshift[Redshift]
+  end
+
+  LRec --> DynDB
+  LAlerts --> DynDB
+  LAnalytics --> DynDB
+  LAnalytics --> RDS
+  LAnalytics --> Redshift
+  LAnalytics --> S3
+
+  subgraph Observability
+    CW[CloudWatch]
+    SNS[SNS]
+    SQS[SQS]
+    EB[EventBridge]
+  end
+
+  LAlerts --> CW
+  LRec --> CW
+  LAnalytics --> CW
+  CW --> SNS
+  LAlerts --> SNS
+  APIGW --> SQS
+  EB --> LRec
+  EB --> LAnalytics
+  EB --> LKill
+
+  S3 --> Redshift
+  S3 --> LRec
+
+  subgraph SecurityIdentity
+    IAM[IAM]
+    Cognito[Cognito]
+  end
+
+  AMP --> Cognito
+  APIGW --> Cognito
+  LRec --> IAM
+  LAlerts --> IAM
+
+  classDef aws fill:#f3f4f6,stroke:#111,stroke-width:1
+  class CF,AMP,APIGW,LRec,LAlerts,LAnalytics,LCompare,LLill,DynDB,S3,RDS,Redshift,CW,SNS,SQS,EB,IAM,Cognito aws
