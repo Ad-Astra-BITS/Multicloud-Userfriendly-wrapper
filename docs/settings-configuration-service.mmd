@@ -1,0 +1,33 @@
+sequenceDiagram
+    actor User
+    participant FE as Frontend
+    participant Settings as Settings API
+    participant DB as Database
+    participant Cache as Redis
+    participant Secrets as Secrets Manager
+    participant Provider as Cloud Provider
+
+    Note over User, Provider: Update Cloud Provider Credentials
+    User->>FE: Add AWS credentials
+    FE->>Settings: POST /api/settings/providers/aws
+    Settings->>Settings: Validate credentials format
+    Settings->>Provider: Test connection (list_regions)
+    
+    alt Connection Failed
+        Provider-->>Settings: Error
+        Settings-->>FE: 400 Invalid credentials
+    else Connection Success
+        Provider-->>Settings: Valid
+        Settings->>Secrets: Store encrypted credentials
+        Secrets-->>Settings: Secret ARN
+        Settings->>DB: INSERT provider_config
+        Settings->>Cache: Invalidate user settings cache
+        Settings-->>FE: 200 OK
+    end
+
+    Note over User, Provider: Update Notification Preferences
+    User->>FE: Toggle email alerts
+    FE->>Settings: PATCH /api/settings/notifications
+    Settings->>DB: UPDATE user_settings
+    Settings->>Cache: Update cached preferences
+    Settings-->>FE: 200 OK

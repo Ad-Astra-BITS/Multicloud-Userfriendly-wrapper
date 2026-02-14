@@ -1,0 +1,42 @@
+sequenceDiagram
+    participant Scheduler as Cron Scheduler
+    participant Engine as Recommendation Engine
+    participant DB as Database
+    participant AWS as AWS SDK
+    participant ML as ML Model Service
+    participant Queue as Message Queue
+    participant Notification as Notification Service
+
+    Note over Scheduler, Notification: Daily Analysis (02:00 UTC)
+    Scheduler->>Engine: Trigger recommendation scan
+    Engine->>DB: Fetch all active resources
+    DB-->>Engine: Resource list
+    
+    loop For Each Resource
+        Engine->>AWS: get_metric_statistics() [CPU, RAM, etc.]
+        AWS-->>Engine: CloudWatch metrics (30 days)
+        
+        Engine->>ML: POST /api/ml/predict {metrics, resourceType}
+        ML-->>Engine: {recommendation, confidence, savings}
+        
+        alt Recommendation Found
+            Engine->>DB: INSERT recommendation
+            Engine->>Queue: Publish notification job
+        end
+    end
+    
+    Engine->>DB: Mark scan complete
+    Queue->>Notification: Process notifications
+    Notification->>Notification: Send email digest
+    
+    Note over Scheduler, Notification: User Applies Recommendation
+    participant User
+    participant FE as Frontend
+    User->>FE: Click "Apply Recommendation"
+    FE->>Engine: POST /api/recommendations/{id}/execute
+    Engine->>DB: Get recommendation details
+    DB-->>Engine: {resourceId, targetTier}
+    Engine->>AWS: modify_instance_attribute()
+    AWS-->>Engine: Success
+    Engine->>DB: UPDATE status='applied'
+    Engine-->>FE: 200 OK

@@ -1,0 +1,42 @@
+sequenceDiagram
+    actor User
+    participant FE as Frontend
+    participant API as Resource API
+    participant DB as Database
+    participant Cache as Redis Cache
+    participant AWS as AWS SDK
+    participant Azure as Azure SDK
+    participant Queue as Message Queue
+
+    Note over User, Queue: Fetch Resources
+    User->>FE: Navigate to Dashboard
+    FE->>API: GET /api/resources?provider=aws
+    API->>Cache: Check cached data
+    
+    alt Cache Hit
+        Cache-->>API: Return cached resources
+        API-->>FE: 200 OK {resources}
+    else Cache Miss
+        Cache-->>API: No data
+        API->>AWS: describe_instances()
+        AWS-->>API: Instance list
+        API->>DB: Store/Update resources
+        API->>Cache: Cache resources (TTL: 5min)
+        API-->>FE: 200 OK {resources}
+    end
+
+    Note over User, Queue: Terminate Resource
+    User->>FE: Click terminate (resource-id)
+    FE->>API: POST /api/resources/terminate {id}
+    API->>DB: Check resource exists
+    DB-->>API: Resource details
+    API->>Queue: Publish termination job
+    API-->>FE: 202 Accepted {jobId}
+    
+    Note over Queue: Background Worker
+    Queue->>API: Process termination job
+    API->>AWS: terminate_instances(id)
+    AWS-->>API: {State: 'shutting-down'}
+    API->>DB: Update status to 'terminating'
+    API->>Cache: Invalidate cache
+    API->>FE: WebSocket: Status update
