@@ -1,0 +1,147 @@
+// Ad Astra — Prisma Schema
+// Database: PostgreSQL (use SQLite url "file:./dev.db" for local dev)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+
+enum ResourceType {
+  EC2
+  S3
+  RDS
+}
+
+enum ResourceStatus {
+  RUNNING
+  STOPPED
+  WARNING
+  TERMINATED
+}
+
+enum S3Tier {
+  STANDARD
+  INTELLIGENT_TIERING
+  GLACIER
+  GLACIER_DEEP_ARCHIVE
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum RecommendationStatus {
+  PENDING
+  APPLIED
+  DISMISSED
+}
+
+enum Severity {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+// ── Models ────────────────────────────────────────────────────────────────────
+
+model Resource {
+  id          String         @id @default(cuid())
+  awsId       String         @unique
+  name        String
+  type        ResourceType
+  status      ResourceStatus
+  region      String
+  monthlyCost Float
+  tags        Json?
+
+  alerts          Alert[]
+  recommendations Recommendation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("resources")
+}
+
+model S3Bucket {
+  id               String  @id @default(cuid())
+  awsBucketName    String  @unique
+  currentTier      S3Tier
+  recommendedTier  S3Tier?
+  sizeBytes        BigInt
+  estimatedSavings Float   @default(0)
+  lifecycleApplied Boolean @default(false)
+
+  lastAccessed DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("s3_buckets")
+}
+
+model Recommendation {
+  id               String               @id @default(cuid())
+  resourceId       String
+  resource         Resource             @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  title            String
+  description      String
+  currentTier      String
+  recommendedTier  String
+  estimatedSavings Float
+  priority         Priority
+  status           RecommendationStatus @default(PENDING)
+
+  appliedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("recommendations")
+}
+
+model Alert {
+  id          String    @id @default(cuid())
+  resourceId  String?
+  resource    Resource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  title       String
+  description String
+  severity    Severity
+  resolved    Boolean   @default(false)
+
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("alerts")
+}
+
+model CostRecord {
+  id       String @id @default(cuid())
+  month    String // "2024-01"
+  service  String // "Amazon EC2", "Amazon S3", etc.
+  cost     Float
+  currency String @default("USD")
+
+  createdAt DateTime @default(now())
+
+  @@unique([month, service])
+  @@map("cost_records")
+}
+
+model OtpVerification {
+  id        String   @id @default(cuid())
+  code      String
+  action    String   // "KILL_SWITCH"
+  expiresAt DateTime
+  used      Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@map("otp_verifications")
+}

@@ -1,0 +1,36 @@
+{
+  "name": "ad-astra-backend",
+  "version": "1.0.0",
+  "description": "Ad Astra Cloud Resource Management — Express API",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch": "^3.758.0",
+    "@aws-sdk/client-cost-explorer": "^3.758.0",
+    "@aws-sdk/client-ec2": "^3.758.0",
+    "@aws-sdk/client-rds": "^3.758.0",
+    "@aws-sdk/client-s3": "^3.758.0",
+    "@prisma/client": "^6.5.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/morgan": "^1.9.9",
+    "@types/node": "^22.13.10",
+    "prisma": "^6.5.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.8.2"
+  }
+}
