@@ -9,6 +9,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Lightbulb,
@@ -19,6 +20,7 @@ import {
   X,
   Database,
 } from 'lucide-react';
+import { api } from '@/lib/api';
 
 // Navigation menu items configuration
 const menuItems = [
@@ -71,8 +73,26 @@ interface SidebarProps {
   onClose: () => void;
 }
 
+interface QuickStats {
+  totalMonthlyCost: number;
+  activeResources: { ec2: number; s3: number; rds: number };
+}
+
+function useQuickStats() {
+  const [stats, setStats] = useState<QuickStats | null>(null);
+
+  useEffect(() => {
+    api.get<{ totalMonthlyCost: number; activeResources: { ec2: number; s3: number; rds: number } }>('/analytics/summary')
+      .then((data) => setStats(data))
+      .catch(() => {});
+  }, []);
+
+  return stats;
+}
+
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const stats = useQuickStats();
 
   return (
     <>
@@ -166,11 +186,21 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             <div className="space-y-1">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">Active Resources</span>
-                <span className="text-white font-medium">48</span>
+                {stats ? (
+                  <span className="text-white font-medium">
+                    {stats.activeResources.ec2 + stats.activeResources.s3 + stats.activeResources.rds}
+                  </span>
+                ) : (
+                  <span className="w-8 h-3 bg-slate-700 rounded animate-pulse inline-block" />
+                )}
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">This Month</span>
-                <span className="text-green-400 font-medium">$12,458</span>
+                {stats ? (
+                  <span className="text-green-400 font-medium">${stats.totalMonthlyCost.toFixed(2)}</span>
+                ) : (
+                  <span className="w-14 h-3 bg-slate-700 rounded animate-pulse inline-block" />
+                )}
               </div>
             </div>
           </div>
