@@ -4,7 +4,7 @@
  * Three-step destructive flow:
  *   1. POST /initiate   → generates OTP, stores in DB (expires in 5 min)
  *   2. POST /verify     → validates OTP, returns a short-lived session token
- *   3. POST /execute    → terminates all EC2 instances + stops all RDS DBs
+ *   3. POST /execute    → terminates EC2, stops RDS, deletes S3 buckets
  *
  * NOTE: In production, step 1 should send the OTP via email or SMS rather
  *       than returning it in the response body.
@@ -14,9 +14,11 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database';
 import {
   listEC2Instances,
+  listS3Buckets,
   listRDSInstances,
   terminateEC2Instances,
   stopRDSInstance,
+  deleteS3Bucket,
 } from '../services/awsResourceService';
 import { ApiResponse } from '../types';
 import crypto from 'crypto';
@@ -98,33 +100,42 @@ export async function execute(req: Request, res: Response, next: NextFunction): 
 
     executionTokens.delete(execToken);
 
-    const [ec2Instances, rdsInstances] = await Promise.all([
-      listEC2Instances(),
-      listRDSInstances(),
+    const clients = req.awsClients;
+
+    const [ec2Instances, s3Buckets, rdsInstances] = await Promise.all([
+      listEC2Instances(clients),
+      listS3Buckets(clients),
+      listRDSInstances(clients),
     ]);
 
     const runningEC2 = ec2Instances.filter((r) => r.status === 'running').map((r) => r.awsId);
+    const allS3 = s3Buckets.map((r) => r.name);
     const runningRDS = rdsInstances.filter((r) => r.status === 'running').map((r) => r.awsId);
 
     const errors: string[] = [];
 
     if (runningEC2.length > 0) {
-      await terminateEC2Instances(runningEC2).catch((e) => errors.push(`EC2: ${e.message}`));
+      await terminateEC2Instances(runningEC2, clients).catch((e) => errors.push(`EC2: ${e.message}`));
+    }
+
+    for (const bucketName of allS3) {
+      await deleteS3Bucket(bucketName, clients).catch((e) => errors.push(`S3 ${bucketName}: ${e.message}`));
     }
 
     for (const dbId of runningRDS) {
-      await stopRDSInstance(dbId).catch((e) => errors.push(`RDS ${dbId}: ${e.message}`));
+      await stopRDSInstance(dbId, clients).catch((e) => errors.push(`RDS ${dbId}: ${e.message}`));
     }
 
     res.json({
       success: errors.length === 0,
       data: {
         terminatedEC2: runningEC2.length,
+        deletedS3: allS3.length,
         stoppedRDS: runningRDS.length,
         errors,
       },
       message: errors.length === 0
-        ? `Kill switch executed: ${runningEC2.length} EC2 terminated, ${runningRDS.length} RDS stopped.`
+        ? `Kill switch executed: ${runningEC2.length} EC2 terminated, ${allS3.length} S3 deleted, ${runningRDS.length} RDS stopped.`
         : `Partial execution — ${errors.length} error(s).`,
     } satisfies ApiResponse);
   } catch (err) {

@@ -23,6 +23,9 @@ import {
   GetBucketLocationCommand,
   GetBucketLifecycleConfigurationCommand,
   PutBucketLifecycleConfigurationCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
+  DeleteBucketCommand,
   LifecycleRule,
 } from '@aws-sdk/client-s3';
 import {
@@ -236,6 +239,36 @@ export async function listRDSInstances(clients?: Clients): Promise<Resource[]> {
 /** Stops a running RDS instance (does not delete; resumes on next start). */
 export async function stopRDSInstance(dbIdentifier: string, clients?: Clients): Promise<void> {
   await (clients?.rds ?? rds).send(new StopDBInstanceCommand({ DBInstanceIdentifier: dbIdentifier }));
+}
+
+/**
+ * Empties and deletes an S3 bucket.
+ * First deletes all objects (in batches of 1000), then deletes the bucket itself.
+ */
+export async function deleteS3Bucket(bucketName: string, clients?: Clients): Promise<void> {
+  const client = clients?.s3 ?? s3;
+
+  // Delete all objects in batches
+  let continuationToken: string | undefined;
+  do {
+    const listed = await client.send(new ListObjectsV2Command({
+      Bucket: bucketName,
+      ContinuationToken: continuationToken,
+    }));
+
+    const objects = listed.Contents ?? [];
+    if (objects.length > 0) {
+      await client.send(new DeleteObjectsCommand({
+        Bucket: bucketName,
+        Delete: { Objects: objects.map((o) => ({ Key: o.Key! })) },
+      }));
+    }
+
+    continuationToken = listed.NextContinuationToken;
+  } while (continuationToken);
+
+  // Delete the now-empty bucket
+  await client.send(new DeleteBucketCommand({ Bucket: bucketName }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
