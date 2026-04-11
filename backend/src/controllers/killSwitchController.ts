@@ -126,8 +126,10 @@ export async function execute(req: Request, res: Response, next: NextFunction): 
       await stopRDSInstance(dbId, clients).catch((e) => errors.push(`RDS ${dbId}: ${e.message}`));
     }
 
+    // Always return success:true — errors are informational (permissions, etc.)
+    // The frontend result modal will display them to the user.
     res.json({
-      success: errors.length === 0,
+      success: true,
       data: {
         terminatedEC2: runningEC2.length,
         deletedS3: allS3.length,
@@ -136,7 +138,7 @@ export async function execute(req: Request, res: Response, next: NextFunction): 
       },
       message: errors.length === 0
         ? `Kill switch executed: ${runningEC2.length} EC2 terminated, ${allS3.length} S3 deleted, ${runningRDS.length} RDS stopped.`
-        : `Partial execution — ${errors.length} error(s).`,
+        : `Partial execution — ${errors.length} error(s). Check data.errors for details.`,
     } satisfies ApiResponse);
   } catch (err) {
     next(err);
