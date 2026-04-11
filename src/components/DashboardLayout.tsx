@@ -69,11 +69,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       {/* Sidebar navigation */}
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      {/* Main content area — offset for fixed navbar (h-14) */}
-      <main className="lg:ml-64 pt-14 min-h-screen">
+      {/* Main content area — offset for fixed navbar (h-14) + 2px gap */}
+      <main className="lg:ml-64 pt-[58px] min-h-screen">
         {/* AWS connection status banner */}
         <ConnectionBanner />
-        <div className="p-4 md:p-6 lg:p-8">{children}</div>
+        <div className="p-6 md:p-8 lg:p-10">{children}</div>
       </main>
     </div>
   );
