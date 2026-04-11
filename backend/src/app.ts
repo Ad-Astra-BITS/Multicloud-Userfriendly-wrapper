@@ -5,6 +5,7 @@ import 'dotenv/config';
 
 import { requestLogger } from './middleware/requestLogger';
 import { errorHandler, notFound } from './middleware/errorHandler';
+import { awsCredentialsMiddleware } from './middleware/awsCredentials';
 import apiRouter from './routes/index';
 
 const app = express();
@@ -26,6 +27,7 @@ app.use(
 );
 app.use(express.json());
 app.use(requestLogger);
+app.use(awsCredentialsMiddleware); // attach per-request AWS clients from headers
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api', apiRouter);

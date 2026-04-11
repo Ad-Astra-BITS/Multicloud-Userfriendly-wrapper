@@ -20,7 +20,7 @@ export async function list(req: Request, res: Response, next: NextFunction): Pro
 /** POST /api/recommendations/refresh — pulls fresh data from AWS and re-runs rules */
 export async function refresh(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const data = await generateRecommendations();
+    const data = await generateRecommendations(req.awsClients);
     res.json({ success: true, data, message: `${data.length} recommendations generated` } satisfies ApiResponse);
   } catch (err) {
     next(err);

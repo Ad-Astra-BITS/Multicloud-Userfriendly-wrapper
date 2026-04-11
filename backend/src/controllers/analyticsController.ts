@@ -10,7 +10,7 @@ import { ApiResponse } from '../types';
 /** GET /api/analytics/summary — dashboard headline numbers */
 export async function summary(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const data = await getDashboardSummary();
+    const data = await getDashboardSummary(req.awsClients);
     res.json({ success: true, data } satisfies ApiResponse);
   } catch (err) {
     next(err);
@@ -21,7 +21,7 @@ export async function summary(req: Request, res: Response, next: NextFunction): 
 export async function trend(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const months = Math.min(parseInt(String(req.query.months ?? '6'), 10), 12);
-    const data = await getCostTrend(months);
+    const data = await getCostTrend(months, req.awsClients);
     res.json({ success: true, data } satisfies ApiResponse);
   } catch (err) {
     next(err);
@@ -32,7 +32,7 @@ export async function trend(req: Request, res: Response, next: NextFunction): Pr
 export async function breakdown(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const months = Math.min(parseInt(String(req.query.months ?? '6'), 10), 12);
-    const data = await getCostBreakdown(months);
+    const data = await getCostBreakdown(months, req.awsClients);
     res.json({ success: true, data } satisfies ApiResponse);
   } catch (err) {
     next(err);
@@ -43,7 +43,7 @@ export async function breakdown(req: Request, res: Response, next: NextFunction)
 export async function distribution(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const month = req.query.month as string | undefined;
-    const data = await getCostDistribution(month);
+    const data = await getCostDistribution(month, req.awsClients);
     res.json({ success: true, data } satisfies ApiResponse);
   } catch (err) {
     next(err);

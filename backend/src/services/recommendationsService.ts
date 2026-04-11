@@ -19,6 +19,9 @@ import {
   getEC2CPUUtilization,
 } from './awsResourceService';
 import { Recommendation, Priority } from '../types';
+import { AwsClients } from '../config/aws';
+
+type Clients = Partial<AwsClients>;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -26,18 +29,18 @@ import { Recommendation, Priority } from '../types';
  * Runs all analysis rules, upserts recommendations into the DB, and
  * returns the full current pending list.
  */
-export async function generateRecommendations(): Promise<Recommendation[]> {
+export async function generateRecommendations(clients?: Clients): Promise<Recommendation[]> {
   const [ec2Resources, s3Resources, rdsResources] = await Promise.all([
-    listEC2Instances(),
-    listS3Buckets(),
-    listRDSInstances(),
+    listEC2Instances(clients),
+    listS3Buckets(clients),
+    listRDSInstances(clients),
   ]);
 
   // Ensure all resources exist in DB before linking recommendations
   await upsertResources([...ec2Resources, ...s3Resources, ...rdsResources]);
 
   const rules = await Promise.all([
-    analyseEC2Utilisation(ec2Resources),
+    analyseEC2Utilisation(ec2Resources, clients),
     analyseStoppedEC2(ec2Resources),
     analyseS3Tiers(s3Resources),
     analyseRDSUtilisation(rdsResources),
@@ -102,12 +105,13 @@ export async function dismissRecommendation(id: string): Promise<Recommendation>
 
 async function analyseEC2Utilisation(
   resources: Awaited<ReturnType<typeof listEC2Instances>>,
+  clients?: Clients,
 ): Promise<Partial<Recommendation>[]> {
   const recs: Partial<Recommendation>[] = [];
 
   for (const r of resources) {
     if (r.status !== 'running') continue;
-    const cpu = await getEC2CPUUtilization(r.awsId).catch(() => null);
+    const cpu = await getEC2CPUUtilization(r.awsId, clients).catch(() => null);
     if (cpu === null || cpu > 15) continue;
 
     recs.push({

@@ -7,9 +7,9 @@ import { ApiResponse, Resource, ResourceType } from '../types';
 export async function getAllResources(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const [ec2, s3, rds] = await Promise.all([
-      listEC2Instances(),
-      listS3Buckets(),
-      listRDSInstances(),
+      listEC2Instances(req.awsClients),
+      listS3Buckets(req.awsClients),
+      listRDSInstances(req.awsClients),
     ]);
     const data = [...ec2, ...s3, ...rds];
     res.json({ success: true, data } satisfies ApiResponse<Resource[]>);
@@ -24,9 +24,9 @@ export async function getResourcesByType(req: Request, res: Response, next: Next
     const type = (req.params.type ?? '').toUpperCase() as ResourceType;
     let data: Resource[] = [];
 
-    if (type === 'EC2') data = await listEC2Instances();
-    else if (type === 'S3') data = await listS3Buckets();
-    else if (type === 'RDS') data = await listRDSInstances();
+    if (type === 'EC2') data = await listEC2Instances(req.awsClients);
+    else if (type === 'S3') data = await listS3Buckets(req.awsClients);
+    else if (type === 'RDS') data = await listRDSInstances(req.awsClients);
     else {
       res.status(400).json({ success: false, error: 'type must be ec2, s3, or rds' });
       return;
