@@ -4,6 +4,7 @@ import analyticsRouter from './analytics';
 import recommendationsRouter from './recommendations';
 import s3LifecycleRouter from './s3Lifecycle';
 import killSwitchRouter from './killSwitch';
+import awsConnectRouter from './awsConnect';
 
 const router = Router();
 
@@ -12,6 +13,7 @@ router.use('/analytics', analyticsRouter);
 router.use('/recommendations', recommendationsRouter);
 router.use('/s3-lifecycle', s3LifecycleRouter);
 router.use('/kill-switch', killSwitchRouter);
+router.use('/aws', awsConnectRouter);
 
 /** Health check */
 router.get('/health', (_req, res) => {

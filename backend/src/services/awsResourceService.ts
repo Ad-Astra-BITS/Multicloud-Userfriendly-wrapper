@@ -39,8 +39,11 @@ import {
   GetMetricStatisticsCommand,
   Statistic,
 } from '@aws-sdk/client-cloudwatch';
-import { ec2, s3, rds, costExplorer, cloudWatch } from '../config/aws';
+import { ec2, s3, rds, costExplorer, cloudWatch, AwsClients } from '../config/aws';
 import { Resource, CostRecord, ResourceStatus } from '../types';
+
+// Default clients (env-var credentials). Pass `clients` to use per-request creds.
+type Clients = Pick<AwsClients, 'ec2' | 's3' | 'rds' | 'costExplorer' | 'cloudWatch'>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EC2
@@ -50,8 +53,8 @@ import { Resource, CostRecord, ResourceStatus } from '../types';
  * Returns all EC2 instances across all reservations in the configured region.
  * Monthly cost is estimated from instance type; real cost comes from Cost Explorer.
  */
-export async function listEC2Instances(): Promise<Resource[]> {
-  const response = await ec2.send(new DescribeInstancesCommand({ MaxResults: 100 }));
+export async function listEC2Instances(clients?: Clients): Promise<Resource[]> {
+  const response = await (clients?.ec2 ?? ec2).send(new DescribeInstancesCommand({ MaxResults: 100 }));
   const resources: Resource[] = [];
 
   for (const reservation of response.Reservations ?? []) {
@@ -76,11 +79,11 @@ export async function listEC2Instances(): Promise<Resource[]> {
 /**
  * Returns average CPU utilisation (%) for an EC2 instance over the last 24 hours.
  */
-export async function getEC2CPUUtilization(instanceId: string): Promise<number> {
+export async function getEC2CPUUtilization(instanceId: string, clients?: Clients): Promise<number> {
   const endTime = new Date();
   const startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000);
 
-  const response = await cloudWatch.send(
+  const response = await (clients?.cloudWatch ?? cloudWatch).send(
     new GetMetricStatisticsCommand({
       Namespace: 'AWS/EC2',
       MetricName: 'CPUUtilization',
@@ -102,9 +105,9 @@ export async function getEC2CPUUtilization(instanceId: string): Promise<number> 
  * Terminates a list of EC2 instances by ID.
  * Used by the Kill Switch flow after OTP verification.
  */
-export async function terminateEC2Instances(instanceIds: string[]): Promise<void> {
+export async function terminateEC2Instances(instanceIds: string[], clients?: Clients): Promise<void> {
   if (instanceIds.length === 0) return;
-  await ec2.send(new TerminateInstancesCommand({ InstanceIds: instanceIds }));
+  await (clients?.ec2 ?? ec2).send(new TerminateInstancesCommand({ InstanceIds: instanceIds }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -114,8 +117,8 @@ export async function terminateEC2Instances(instanceIds: string[]): Promise<void
 /**
  * Lists all S3 buckets owned by the account and returns them as Resource objects.
  */
-export async function listS3Buckets(): Promise<Resource[]> {
-  const listResponse = await s3.send(new ListBucketsCommand({}));
+export async function listS3Buckets(clients?: Clients): Promise<Resource[]> {
+  const listResponse = await (clients?.s3 ?? s3).send(new ListBucketsCommand({}));
   const resources: Resource[] = [];
 
   for (const bucket of listResponse.Buckets ?? []) {
@@ -126,7 +129,7 @@ export async function listS3Buckets(): Promise<Resource[]> {
       name: bucket.Name,
       type: 'S3',
       status: 'running',
-      region: await getBucketRegion(bucket.Name),
+      region: await getBucketRegion(bucket.Name, clients),
       monthlyCost: 0, // real cost comes from Cost Explorer
     });
   }
@@ -135,9 +138,9 @@ export async function listS3Buckets(): Promise<Resource[]> {
 }
 
 /** Fetches the bucket's storage region. Returns 'us-east-1' on error. */
-async function getBucketRegion(bucketName: string): Promise<string> {
+async function getBucketRegion(bucketName: string, clients?: Clients): Promise<string> {
   try {
-    const response = await s3.send(new GetBucketLocationCommand({ Bucket: bucketName }));
+    const response = await (clients?.s3 ?? s3).send(new GetBucketLocationCommand({ Bucket: bucketName }));
     return response.LocationConstraint ?? 'us-east-1';
   } catch {
     return 'us-east-1';
@@ -145,9 +148,9 @@ async function getBucketRegion(bucketName: string): Promise<string> {
 }
 
 /** Returns the current lifecycle rules for a bucket (empty array if none). */
-export async function getS3LifecycleRules(bucketName: string): Promise<LifecycleRule[]> {
+export async function getS3LifecycleRules(bucketName: string, clients?: Clients): Promise<LifecycleRule[]> {
   try {
-    const response = await s3.send(new GetBucketLifecycleConfigurationCommand({ Bucket: bucketName }));
+    const response = await (clients?.s3 ?? s3).send(new GetBucketLifecycleConfigurationCommand({ Bucket: bucketName }));
     return response.Rules ?? [];
   } catch (err: unknown) {
     if ((err as { name?: string }).name === 'NoSuchLifecycleConfiguration') return [];
@@ -167,6 +170,7 @@ export async function applyGlacierLifecycle(
   bucketName: string,
   daysToGlacier: number,
   daysToDeepArchive?: number,
+  clients?: Clients,
 ): Promise<void> {
   const rules: LifecycleRule[] = [
     {
@@ -182,7 +186,7 @@ export async function applyGlacierLifecycle(
     },
   ];
 
-  await s3.send(
+  await (clients?.s3 ?? s3).send(
     new PutBucketLifecycleConfigurationCommand({
       Bucket: bucketName,
       LifecycleConfiguration: { Rules: rules },
@@ -193,7 +197,7 @@ export async function applyGlacierLifecycle(
 /**
  * Switches a bucket to Intelligent-Tiering by setting a Day 0 transition rule.
  */
-export async function applyIntelligentTiering(bucketName: string): Promise<void> {
+export async function applyIntelligentTiering(bucketName: string, clients?: Clients): Promise<void> {
   const rules: LifecycleRule[] = [
     {
       ID: 'ad-astra-intelligent-tiering',
@@ -203,7 +207,7 @@ export async function applyIntelligentTiering(bucketName: string): Promise<void>
     },
   ];
 
-  await s3.send(
+  await (clients?.s3 ?? s3).send(
     new PutBucketLifecycleConfigurationCommand({
       Bucket: bucketName,
       LifecycleConfiguration: { Rules: rules },
@@ -216,8 +220,8 @@ export async function applyIntelligentTiering(bucketName: string): Promise<void>
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Lists all RDS DB instances in the region and returns them as Resource objects. */
-export async function listRDSInstances(): Promise<Resource[]> {
-  const response = await rds.send(new DescribeDBInstancesCommand({}));
+export async function listRDSInstances(clients?: Clients): Promise<Resource[]> {
+  const response = await (clients?.rds ?? rds).send(new DescribeDBInstancesCommand({}));
   return (response.DBInstances ?? []).map((db) => ({
     id: db.DBInstanceIdentifier ?? '',
     awsId: db.DBInstanceIdentifier ?? '',
@@ -230,8 +234,8 @@ export async function listRDSInstances(): Promise<Resource[]> {
 }
 
 /** Stops a running RDS instance (does not delete; resumes on next start). */
-export async function stopRDSInstance(dbIdentifier: string): Promise<void> {
-  await rds.send(new StopDBInstanceCommand({ DBInstanceIdentifier: dbIdentifier }));
+export async function stopRDSInstance(dbIdentifier: string, clients?: Clients): Promise<void> {
+  await (clients?.rds ?? rds).send(new StopDBInstanceCommand({ DBInstanceIdentifier: dbIdentifier }));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,7 +246,7 @@ export async function stopRDSInstance(dbIdentifier: string): Promise<void> {
  * Fetches unblended cost grouped by AWS service for the past N months.
  * Returns one CostRecord per (month, service) pair.
  */
-export async function getMonthlyCostsByService(months = 6): Promise<CostRecord[]> {
+export async function getMonthlyCostsByService(months = 6, clients?: Clients): Promise<CostRecord[]> {
   const endDate = toDateString(new Date());
   const startDate = toDateString(subtractMonths(new Date(), months));
 
@@ -253,7 +257,7 @@ export async function getMonthlyCostsByService(months = 6): Promise<CostRecord[]
     GroupBy: [{ Type: 'DIMENSION', Key: 'SERVICE' }],
   };
 
-  const response = await costExplorer.send(new GetCostAndUsageCommand(input));
+  const response = await (clients?.costExplorer ?? costExplorer).send(new GetCostAndUsageCommand(input));
   const records: CostRecord[] = [];
 
   for (const result of response.ResultsByTime ?? []) {
@@ -271,7 +275,7 @@ export async function getMonthlyCostsByService(months = 6): Promise<CostRecord[]
 /**
  * Fetches total unblended cost per month (all services combined).
  */
-export async function getTotalCostPerMonth(months = 6): Promise<{ month: string; cost: number }[]> {
+export async function getTotalCostPerMonth(months = 6, clients?: Clients): Promise<{ month: string; cost: number }[]> {
   const endDate = toDateString(new Date());
   const startDate = toDateString(subtractMonths(new Date(), months));
 
@@ -281,7 +285,7 @@ export async function getTotalCostPerMonth(months = 6): Promise<{ month: string;
     Metrics: ['UnblendedCost'],
   };
 
-  const response = await costExplorer.send(new GetCostAndUsageCommand(input));
+  const response = await (clients?.costExplorer ?? costExplorer).send(new GetCostAndUsageCommand(input));
 
   return (response.ResultsByTime ?? []).map((result) => ({
     month: result.TimePeriod?.Start?.slice(0, 7) ?? '',

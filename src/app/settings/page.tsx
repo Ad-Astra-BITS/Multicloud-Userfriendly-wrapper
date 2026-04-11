@@ -8,16 +8,20 @@
 
 import { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
+import { useAWS } from '@/context/AWSContext';
 import {
   User,
   Bell,
   Shield,
   Cloud,
   Moon,
-  Globe,
   Key,
   Check,
   ChevronRight,
+  CheckCircle,
+  XCircle,
+  Plug,
+  Unplug,
 } from 'lucide-react';
 
 // ============================================
@@ -104,6 +108,127 @@ function SettingsRow({ label, description, children }: SettingsRowProps) {
       </div>
       {children}
     </div>
+  );
+}
+
+// ============================================
+// Cloud Providers Section Component
+// ============================================
+
+function CloudProvidersSection() {
+  const { isConnected, credentials, openConnectModal, disconnect } = useAWS();
+
+  return (
+    <SettingsSection
+      title="Cloud Providers"
+      description="Connected cloud accounts"
+      icon={<Cloud size={20} className="text-purple-400" />}
+    >
+      <div className="space-y-3">
+        {/* AWS — live connection */}
+        <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                <Cloud size={20} className="text-orange-400" />
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-white">AWS</h4>
+                {isConnected && credentials ? (
+                  <p className="text-xs text-slate-400 font-mono">
+                    Account {credentials.accountId} · {credentials.region}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500">No account connected</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {isConnected ? (
+                <>
+                  <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400">
+                    <CheckCircle size={11} />
+                    Connected
+                  </span>
+                  <button
+                    onClick={disconnect}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-red-500/20 hover:text-red-400 text-slate-300 transition-colors"
+                  >
+                    <Unplug size={12} />
+                    Disconnect
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-slate-700 text-slate-400">
+                    <XCircle size={11} />
+                    Not Connected
+                  </span>
+                  <button
+                    onClick={openConnectModal}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-white font-medium transition-colors"
+                  >
+                    <Plug size={12} />
+                    Connect
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {isConnected && credentials && (
+            <div className="mt-3 pt-3 border-t border-slate-700/30 grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-slate-500">Account ID</p>
+                <p className="text-xs font-mono text-slate-300 mt-0.5">{credentials.accountId}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Region</p>
+                <p className="text-xs font-mono text-slate-300 mt-0.5">{credentials.region}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Access Key</p>
+                <p className="text-xs font-mono text-slate-300 mt-0.5">
+                  {credentials.accessKeyId.slice(0, 8)}••••••••••••
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Connected At</p>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  {credentials.connectedAt
+                    ? new Date(credentials.connectedAt).toLocaleString()
+                    : '—'}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Azure — coming soon */}
+        {[
+          { name: 'Azure', color: 'blue' },
+          { name: 'GCP', color: 'red' },
+        ].map((provider) => (
+          <div
+            key={provider.name}
+            className="flex items-center justify-between p-4 bg-slate-900/30 rounded-lg border border-slate-700/20 opacity-60"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-slate-700/30 flex items-center justify-center">
+                <Cloud size={20} className="text-slate-500" />
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-slate-400">{provider.name}</h4>
+                <p className="text-xs text-slate-600">Coming in Phase 3</p>
+              </div>
+            </div>
+            <span className="text-xs px-2 py-1 rounded-full bg-slate-700/50 text-slate-500">
+              Planned
+            </span>
+          </div>
+        ))}
+      </div>
+    </SettingsSection>
   );
 }
 
@@ -247,64 +372,7 @@ export default function SettingsPage() {
         </SettingsSection>
 
         {/* Cloud Providers Section */}
-        <SettingsSection
-          title="Cloud Providers"
-          description="Connected cloud accounts"
-          icon={<Cloud size={20} className="text-purple-400" />}
-        >
-          <div className="space-y-3">
-            {[
-              {
-                name: 'AWS',
-                status: 'Connected',
-                account: 'prod-account-123',
-                color: 'orange',
-              },
-              {
-                name: 'Azure',
-                status: 'Not Connected',
-                account: null,
-                color: 'blue',
-              },
-              {
-                name: 'GCP',
-                status: 'Not Connected',
-                account: null,
-                color: 'red',
-              },
-            ].map((provider) => (
-              <div
-                key={provider.name}
-                className="flex items-center justify-between p-4 bg-slate-900/50 rounded-lg"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-10 h-10 rounded-lg bg-${provider.color}-500/20 flex items-center justify-center`}
-                  >
-                    <Cloud size={20} className={`text-${provider.color}-400`} />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-white">
-                      {provider.name}
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      {provider.account || 'No account connected'}
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    provider.status === 'Connected'
-                      ? 'bg-green-500/20 text-green-400'
-                      : 'bg-slate-700 text-slate-400'
-                  }`}
-                >
-                  {provider.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </SettingsSection>
+        <CloudProvidersSection />
 
         {/* Appearance Section */}
         <SettingsSection

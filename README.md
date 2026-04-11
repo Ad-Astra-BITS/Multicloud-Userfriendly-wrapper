@@ -4,6 +4,25 @@
 
 ---
 
+## Table of Contents
+
+- [System Architecture](#system-architecture)
+- [Backend Folder Structure](#backend-folder-structure)
+- [API Endpoints](#api-endpoints)
+- [Kill-Switch Flow](#kill-switch-flow)
+- [Database Schema](#database-schema)
+- [Setup](#setup)
+- [Project Timeline](#project-timeline)
+- [Project Report](#project-report)
+  - [1 — Extended Prototype / Concept Validation](#1--extended-prototype--concept-validation)
+  - [2 — Technical Depth & Understanding](#2--technical-depth--understanding)
+  - [3 — Test Case Design & Result Analysis](#3--test-case-design--result-analysis)
+  - [4 — Feasibility Analysis](#4--feasibility-analysis)
+  - [5 — Risk Analysis & Mitigation](#5--risk-analysis--mitigation)
+  - [6 — Final Report Quality](#6--final-report-quality-technical-documentation)
+
+---
+
 ## System Architecture
 
 ```mermaid
@@ -185,16 +204,39 @@ erDiagram
 ### Prerequisites
 - Node.js 20+
 - PostgreSQL 15+
-- AWS IAM user (see required permissions below)
+- AWS IAM user with access keys (see required permissions below)
 
 ### 1 — Environment
 ```bash
 cd backend
 cp .env.example .env
-# fill in DATABASE_URL and AWS credentials
+# fill in DATABASE_URL (PostgreSQL connection string)
+# AWS credentials are optional for local dev — users supply them via the UI
 ```
 
-### 2 — AWS IAM Permissions Required
+### 2 — Connect Your AWS Account (UI Flow)
+
+Ad Astra uses a **browser-side credential flow**: users enter their AWS keys directly in the frontend and the credentials are sent as request headers to the backend — never stored in the database.
+
+**What users need to provide:**
+
+| Field | Example | Notes |
+|-------|---------|-------|
+| AWS Access Key ID | `AKIAIOSFODNN7EXAMPLE` | Starts with `AKIA` (long-term) or `ASIA` (STS/temporary) |
+| AWS Secret Access Key | `wJalrXUtnFEMI/K7MDENG/...` | The matching 40-char secret |
+| AWS Region | `us-east-1` | Where most of your resources live |
+
+> **Account ID is NOT required** — it is auto-detected from the credentials via STS `GetCallerIdentity` and shown for confirmation.
+
+**Credential flow:**
+1. User opens Settings → Cloud Providers → "Connect AWS"
+2. Frontend calls `POST /api/aws/validate` with credentials as request headers
+3. Backend calls `STS GetCallerIdentity` — returns Account ID, ARN, User ID
+4. On success, credentials are stored in `sessionStorage` (cleared when tab closes)
+5. All subsequent API calls include credentials as `x-aws-*` headers
+6. Backend creates per-request AWS SDK clients from these headers
+
+### 3 — AWS IAM Permissions Required
 Create an IAM user with these permissions (no console access needed):
 ```
 ec2:DescribeInstances
@@ -209,7 +251,9 @@ ce:GetCostAndUsage
 cloudwatch:GetMetricStatistics
 ```
 
-> You do **not** need to share credentials in chat. Copy `.env.example` → `.env` and paste your keys there locally. The backend reads them via `process.env` at runtime.
+The IAM permission panel in the Connect modal lists all required permissions with a direct link to the AWS IAM Console.
+
+> **Security note:** In production, replace long-lived access keys with an IAM role attached to your deployment environment. See Phase 4 roadmap.
 
 ### 3 — Install & Migrate
 ```bash
@@ -229,6 +273,45 @@ npm run dev
 
 Frontend: http://localhost:3800
 API: http://localhost:4000/api/health
+
+---
+
+## Project Timeline
+
+The project runs from January 2026 through June 2026, structured across four phases. The first two phases are complete. Phases 3 and 4 outline the path to a fully production-ready system.
+
+```mermaid
+gantt
+    title Ad Astra — Development Timeline
+    dateFormat YYYY-MM-DD
+    axisFormat %b %Y
+
+    section Phase 1 - Foundation
+    Frontend UI and all components       :done, 2026-01-01, 2026-03-01
+    Backend API and AWS integration      :done, 2026-03-01, 2026-03-31
+
+    section Phase 2 - Integration
+    Wire frontend pages to live API      :active, 2026-04-01, 2026-04-18
+    Automated test suite (Jest)          :        2026-04-14, 2026-04-30
+
+    section Phase 3 - Enhancement
+    Auth middleware and rate limiting    :        2026-05-01, 2026-05-18
+    Azure read-only provider             :        2026-05-07, 2026-05-25
+    S3 sizing via CloudWatch metrics     :        2026-05-14, 2026-05-31
+
+    section Phase 4 - Production
+    CI/CD pipeline and deployment        :        2026-06-01, 2026-06-18
+    GCP integration and security audit   :        2026-06-14, 2026-06-30
+```
+
+### Phase Breakdown
+
+| Phase | Period | Deliverables | Status |
+|-------|--------|--------------|--------|
+| 1 — Foundation | Jan — Mar 2026 | Frontend UI (8 pages), Express API, AWS SDK v3 integration, Prisma schema, all services and routes | Complete |
+| 2 — Integration | Apr 2026 | Replace mock data with live API calls in frontend, automated Jest test suite covering all 10 test cases | In Progress |
+| 3 — Enhancement | May 2026 | JWT auth middleware, express-rate-limit on kill-switch, Azure read-only provider, real S3 bucket sizing via CloudWatch | Planned |
+| 4 — Production | Jun 2026 | GitHub Actions CI/CD, managed PostgreSQL, IAM roles replacing long-lived keys, GCP integration, security audit | Planned |
 
 ---
 

@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { AWSContextProvider } from '@/context/AWSContext';
+import ConnectAWSModal from '@/components/ConnectAWSModal';
 
 /**
  * Root Layout
@@ -30,7 +32,10 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.variable} font-sans antialiased bg-slate-950`}>
-        {children}
+        <AWSContextProvider>
+          {children}
+          <ConnectAWSModal />
+        </AWSContextProvider>
       </body>
     </html>
   );

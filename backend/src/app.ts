@@ -15,7 +15,13 @@ app.use(
   cors({
     origin: process.env.FRONTEND_URL ?? 'http://localhost:3800',
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'x-aws-access-key-id',
+      'x-aws-secret-access-key',
+      'x-aws-region',
+    ],
   }),
 );
 app.use(express.json());
