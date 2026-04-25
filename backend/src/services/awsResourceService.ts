@@ -31,6 +31,7 @@ import {
 import {
   DescribeDBInstancesCommand,
   StopDBInstanceCommand,
+  StopDBClusterCommand,
   DBInstance,
 } from '@aws-sdk/client-rds';
 import {
@@ -236,9 +237,23 @@ export async function listRDSInstances(clients?: Clients): Promise<Resource[]> {
   }));
 }
 
-/** Stops a running RDS instance (does not delete; resumes on next start). */
+/**
+ * Stops a running RDS instance or Aurora cluster.
+ * Aurora instances are part of a cluster and must be stopped at cluster level;
+ * regular RDS instances are stopped directly via StopDBInstance.
+ */
 export async function stopRDSInstance(dbIdentifier: string, clients?: Clients): Promise<void> {
-  await (clients?.rds ?? rds).send(new StopDBInstanceCommand({ DBInstanceIdentifier: dbIdentifier }));
+  const rdsClient = clients?.rds ?? rds;
+
+  const described = await rdsClient.send(new DescribeDBInstancesCommand({ DBInstanceIdentifier: dbIdentifier }));
+  const instance = described.DBInstances?.[0];
+
+  if (instance?.DBClusterIdentifier) {
+    // Aurora instance — stop the whole cluster instead of the individual instance
+    await rdsClient.send(new StopDBClusterCommand({ DBClusterIdentifier: instance.DBClusterIdentifier }));
+  } else {
+    await rdsClient.send(new StopDBInstanceCommand({ DBInstanceIdentifier: dbIdentifier }));
+  }
 }
 
 /**

@@ -173,17 +173,26 @@ export async function execute(req: Request, res: Response, next: NextFunction): 
       : runningRDS;
 
     const errors: string[] = [];
+    let terminatedEC2Count = 0;
+    let deletedS3Count = 0;
+    let stoppedRDSCount = 0;
 
     if (targetEC2.length > 0) {
-      await terminateEC2Instances(targetEC2, clients).catch((e) => errors.push(`EC2: ${e.message}`));
+      await terminateEC2Instances(targetEC2, clients)
+        .then(() => { terminatedEC2Count = targetEC2.length; })
+        .catch((e) => errors.push(`EC2: ${e.message}`));
     }
 
     for (const bucketName of targetS3) {
-      await deleteS3Bucket(bucketName, clients).catch((e) => errors.push(`S3 ${bucketName}: ${e.message}`));
+      await deleteS3Bucket(bucketName, clients)
+        .then(() => { deletedS3Count++; })
+        .catch((e) => errors.push(`S3 ${bucketName}: ${e.message}`));
     }
 
     for (const dbId of targetRDS) {
-      await stopRDSInstance(dbId, clients).catch((e) => errors.push(`RDS ${dbId}: ${e.message}`));
+      await stopRDSInstance(dbId, clients)
+        .then(() => { stoppedRDSCount++; })
+        .catch((e) => errors.push(`RDS ${dbId}: ${e.message}`));
     }
 
     // Always return success:true — errors are informational (permissions, etc.)
@@ -191,9 +200,9 @@ export async function execute(req: Request, res: Response, next: NextFunction): 
     res.json({
       success: true,
       data: {
-        terminatedEC2: targetEC2.length,
-        deletedS3: targetS3.length,
-        stoppedRDS: targetRDS.length,
+        terminatedEC2: terminatedEC2Count,
+        deletedS3: deletedS3Count,
+        stoppedRDS: stoppedRDSCount,
         errors,
       },
       message: errors.length === 0
