@@ -111,13 +111,16 @@ backend/
 | GET | `/api/s3-lifecycle` | Buckets with tier recommendations |
 | POST | `/api/s3-lifecycle/:bucketName/apply` | Apply tier to one bucket |
 | POST | `/api/s3-lifecycle/apply-all` | Apply all pending tier changes |
+| GET  | `/api/kill-switch/resources` | List all active EC2 / S3 / RDS resources for selection |
 | POST | `/api/kill-switch/initiate` | Generate OTP |
 | POST | `/api/kill-switch/verify` | Verify OTP → exec token |
-| POST | `/api/kill-switch/execute` | Terminate EC2 + stop RDS |
+| POST | `/api/kill-switch/execute` | Terminate / stop / delete selected resources |
 
 ---
 
 ## Kill-Switch Flow
+
+The kill switch supports **selective bulk deletion** — users choose exactly which resources to destroy via a checkbox list before triggering the OTP gate.
 
 ```mermaid
 sequenceDiagram
@@ -127,7 +130,12 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant AWS
 
-    User->>FE: Click "Emergency Shutdown"
+    FE->>BE: GET /kill-switch/resources
+    BE->>AWS: listEC2 + listS3 + listRDS
+    BE-->>FE: { ec2[], s3[], rds[] }
+    FE->>User: Show resource list with checkboxes
+    User->>FE: Check resources to destroy
+    User->>FE: Click "Destroy Selected (N)"
     FE->>BE: POST /kill-switch/initiate
     BE->>DB: Store OTP (5 min TTL)
     BE-->>FE: { otp, expiresAt }
@@ -136,11 +144,14 @@ sequenceDiagram
     FE->>BE: POST /kill-switch/verify { otp }
     BE->>DB: Validate OTP
     BE-->>FE: { execToken }
-    FE->>BE: POST /kill-switch/execute { execToken }
-    BE->>AWS: TerminateInstances (EC2)
-    BE->>AWS: StopDBInstance (RDS)
-    BE-->>FE: { terminated, stopped, errors }
+    FE->>BE: POST /kill-switch/execute { execToken, selectedResources }
+    BE->>AWS: TerminateInstances (selected EC2 only)
+    BE->>AWS: DeleteBucket (selected S3 only)
+    BE->>AWS: StopDBInstance (selected RDS only)
+    BE-->>FE: { terminatedEC2, deletedS3, stoppedRDS, errors }
 ```
+
+**Selective execution:** `execute` accepts an optional `selectedResources: { ec2?: string[], s3?: string[], rds?: string[] }` body. Only resources in the selection list are acted upon; if omitted, all running resources are targeted (original behaviour preserved).
 
 ---
 
@@ -355,7 +366,9 @@ Each rule is a pure async function: `(resources) → Partial<Recommendation>[]`.
 Three gates protect against accidental execution:
 1. **Initiate** — generates a 6-digit OTP stored in DB with 5-minute TTL.
 2. **Verify** — validates OTP and returns a UUID execution token with 2-minute TTL stored in memory.
-3. **Execute** — consumes the execution token (single-use) and calls `TerminateInstances` + `StopDBInstance`.
+3. **Execute** — consumes the execution token (single-use) and acts only on the caller-supplied `selectedResources` list, intersected with live running resources at the time of execution.
+
+**Selective deletion UI:** The kill-switch page fetches all active resources on load and renders them as a grouped checkbox list (EC2 / S3 / RDS). Users tick the specific resources they want to destroy, then click "Destroy Selected (N)". Per-group "Select all / Deselect all" controls and a global clear are provided. The destroy button is disabled until at least one resource is checked.
 
 ---
 
