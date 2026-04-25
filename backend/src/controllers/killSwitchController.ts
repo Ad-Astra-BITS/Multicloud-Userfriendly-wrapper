@@ -77,6 +77,17 @@ export async function initiate(req: Request, res: Response, next: NextFunction):
   }
 }
 
+const DB_TIMEOUT_MS = 8000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 /** POST /api/kill-switch/verify  body: { otp: string } */
 export async function verify(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -87,14 +98,18 @@ export async function verify(req: Request, res: Response, next: NextFunction): P
       return;
     }
 
-    const record = await prisma.otpVerification.findFirst({
-      where: {
-        code: otp,
-        action: 'KILL_SWITCH',
-        used: false,
-        expiresAt: { gt: new Date() },
-      },
-    });
+    const record = await withTimeout(
+      prisma.otpVerification.findFirst({
+        where: {
+          code: otp,
+          action: 'KILL_SWITCH',
+          used: false,
+          expiresAt: { gt: new Date() },
+        },
+      }),
+      DB_TIMEOUT_MS,
+      'OTP lookup',
+    );
 
     if (!record) {
       res.status(401).json({ success: false, error: 'Invalid or expired OTP' });
@@ -102,7 +117,11 @@ export async function verify(req: Request, res: Response, next: NextFunction): P
     }
 
     // Mark OTP as consumed
-    await prisma.otpVerification.update({ where: { id: record.id }, data: { used: true } });
+    await withTimeout(
+      prisma.otpVerification.update({ where: { id: record.id }, data: { used: true } }),
+      DB_TIMEOUT_MS,
+      'OTP update',
+    );
 
     // Issue a one-time execution token (stored in memory for simplicity)
     const execToken = crypto.randomUUID();
