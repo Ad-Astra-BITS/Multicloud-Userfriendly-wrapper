@@ -1,26 +1,22 @@
 'use client';
 
-/**
- * KillSwitch Component
- *
- * Emergency shutdown with a real 3-step flow:
- *   1. Click DESTROY ALL → POST /kill-switch/initiate → backend generates OTP
- *   2. User enters the OTP shown on screen → POST /kill-switch/verify → execToken
- *   3. POST /kill-switch/execute with execToken → actual termination
- *
- * Resource counts are fetched live from /api/analytics/summary.
- */
-
 import { useState, useRef, useEffect } from 'react';
-import { Power, AlertTriangle, X, Shield, Check, Loader2 } from 'lucide-react';
+import { Power, AlertTriangle, X, Shield, Check, Loader2, Server, Database, Archive } from 'lucide-react';
 import { api } from '@/lib/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface ResourceCounts {
-  ec2: number;
-  s3: number;
-  rds: number;
+interface ResourceItem {
+  id: string;
+  name: string;
+  status?: string;
+  region?: string;
+}
+
+interface ResourceList {
+  ec2: ResourceItem[];
+  s3: ResourceItem[];
+  rds: ResourceItem[];
 }
 
 interface ExecuteResult {
@@ -30,11 +26,74 @@ interface ExecuteResult {
   errors: string[];
 }
 
+// ── Resource Group ─────────────────────────────────────────────────────────────
+
+interface ResourceGroupProps {
+  title: string;
+  icon: React.ReactNode;
+  items: ResourceItem[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+  onToggleAll: () => void;
+}
+
+function ResourceGroup({ title, icon, items, selected, onToggle, onToggleAll }: ResourceGroupProps) {
+  const allSelected = items.length > 0 && items.every((item) => selected.has(item.id));
+
+  return (
+    <div className="border border-slate-700/50 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 bg-slate-800/80">
+        <div className="flex items-center gap-2">
+          {icon}
+          <span className="text-sm font-medium text-slate-300">{title}</span>
+          <span className="text-xs text-slate-500">({items.length})</span>
+        </div>
+        <button
+          onClick={onToggleAll}
+          className="text-xs text-slate-400 hover:text-white transition-colors px-2 py-1 hover:bg-slate-700 rounded"
+        >
+          {allSelected ? 'Deselect all' : 'Select all'}
+        </button>
+      </div>
+      <div className="divide-y divide-slate-700/30">
+        {items.map((item) => (
+          <label
+            key={item.id}
+            className="flex items-center gap-3 px-4 py-3 hover:bg-slate-800/50 cursor-pointer transition-colors"
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(item.id)}
+              onChange={() => onToggle(item.id)}
+              className="w-4 h-4 rounded accent-red-500 cursor-pointer"
+            />
+            <div className="flex-1 min-w-0">
+              <span className="text-sm text-white truncate block">{item.name}</span>
+              {item.region && <span className="text-xs text-slate-500">{item.region}</span>}
+            </div>
+            {item.status && (
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full ${
+                  item.status === 'running'
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-slate-700 text-slate-400'
+                }`}
+              >
+                {item.status}
+              </span>
+            )}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── OTP Modal ─────────────────────────────────────────────────────────────────
 
 interface OTPModalProps {
   isOpen: boolean;
-  generatedOtp: string;       // OTP returned by the backend (shown to user)
+  generatedOtp: string;
   expiresAt: string;
   onClose: () => void;
   onVerified: (execToken: string) => void;
@@ -93,15 +152,13 @@ function OTPModal({ isOpen, generatedOtp, expiresAt, onClose, onVerified }: OTPM
 
   if (!isOpen) return null;
 
-  const expiry = new Date(expiresAt);
-  const expiryStr = expiry.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const expiryStr = new Date(expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return (
     <>
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
-          {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-slate-700">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center">
@@ -117,23 +174,20 @@ function OTPModal({ isOpen, generatedOtp, expiresAt, onClose, onVerified }: OTPM
             </button>
           </div>
 
-          {/* Body */}
           <div className="p-6">
             <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-xl mb-5">
               <AlertTriangle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-red-400">
-                This action is <strong>irreversible</strong>. All resources will be permanently destroyed.
+                This action is <strong>irreversible</strong>. Selected resources will be permanently destroyed.
               </p>
             </div>
 
-            {/* Show the OTP */}
             <div className="mb-5 p-4 bg-slate-900/80 border border-amber-500/30 rounded-xl text-center">
               <p className="text-xs text-slate-400 mb-1">Your one-time password (expires {expiryStr})</p>
               <p className="text-3xl font-mono font-bold tracking-[0.3em] text-amber-400">{generatedOtp}</p>
               <p className="text-xs text-slate-500 mt-1">In production this would be sent via email/SMS</p>
             </div>
 
-            {/* OTP Input */}
             <div className="mb-5">
               <label className="block text-sm font-medium text-slate-400 mb-3 text-center">
                 Re-enter the OTP to confirm
@@ -160,7 +214,6 @@ function OTPModal({ isOpen, generatedOtp, expiresAt, onClose, onVerified }: OTPM
             </div>
           </div>
 
-          {/* Footer */}
           <div className="flex gap-3 p-6 border-t border-slate-700 bg-slate-900/30">
             <button onClick={onClose} className="flex-1 py-3 text-slate-300 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-colors">
               Cancel
@@ -227,27 +280,56 @@ function ResultModal({ result, onClose }: ResultModalProps) {
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function KillSwitch() {
-  const [counts, setCounts] = useState<ResourceCounts | null>(null);
+  const [resources, setResources] = useState<ResourceList | null>(null);
+  const [loadingResources, setLoadingResources] = useState(true);
+  const [selectedEC2, setSelectedEC2] = useState<Set<string>>(new Set());
+  const [selectedS3, setSelectedS3] = useState<Set<string>>(new Set());
+  const [selectedRDS, setSelectedRDS] = useState<Set<string>>(new Set());
+
   const [isPressed, setIsPressed] = useState(false);
   const [initiating, setInitiating] = useState(false);
 
-  // OTP modal state
   const [otpModalOpen, setOtpModalOpen] = useState(false);
   const [generatedOtp, setGeneratedOtp] = useState('');
   const [otpExpiresAt, setOtpExpiresAt] = useState('');
 
-  // Execution state
   const [executing, setExecuting] = useState(false);
   const [execResult, setExecResult] = useState<ExecuteResult | null>(null);
 
-  // Fetch live resource counts
-  useEffect(() => {
-    api.get<{ activeResources: ResourceCounts }>('/analytics/summary')
-      .then((d) => setCounts(d.activeResources))
-      .catch(() => {});
-  }, []);
+  const fetchResources = () => {
+    setLoadingResources(true);
+    api.get<ResourceList>('/kill-switch/resources')
+      .then((data) => setResources(data))
+      .catch(() => setResources({ ec2: [], s3: [], rds: [] }))
+      .finally(() => setLoadingResources(false));
+  };
 
-  const handleDestroyAll = async () => {
+  useEffect(() => { fetchResources(); }, []);
+
+  const toggle = (
+    selected: Set<string>,
+    setFn: React.Dispatch<React.SetStateAction<Set<string>>>,
+    id: string,
+  ) => {
+    setFn((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleGroup = (
+    items: ResourceItem[],
+    selected: Set<string>,
+    setFn: React.Dispatch<React.SetStateAction<Set<string>>>,
+  ) => {
+    const allSelected = items.length > 0 && items.every((i) => selected.has(i.id));
+    setFn(allSelected ? new Set() : new Set(items.map((i) => i.id)));
+  };
+
+  const totalSelected = selectedEC2.size + selectedS3.size + selectedRDS.size;
+
+  const handleDestroySelected = async () => {
     setInitiating(true);
     try {
       const res = await api.post<{ otp: string; expiresAt: string }>('/kill-switch/initiate');
@@ -265,12 +347,19 @@ export default function KillSwitch() {
     setOtpModalOpen(false);
     setExecuting(true);
     try {
-      const res = await api.post<ExecuteResult>('/kill-switch/execute', { execToken });
+      const res = await api.post<ExecuteResult>('/kill-switch/execute', {
+        execToken,
+        selectedResources: {
+          ec2: Array.from(selectedEC2),
+          s3: Array.from(selectedS3),
+          rds: Array.from(selectedRDS),
+        },
+      });
       setExecResult(res);
-      // Refresh counts after execution
-      api.get<{ activeResources: ResourceCounts }>('/analytics/summary')
-        .then((d) => setCounts(d.activeResources))
-        .catch(() => {});
+      setSelectedEC2(new Set());
+      setSelectedS3(new Set());
+      setSelectedRDS(new Set());
+      fetchResources();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Execution failed');
     } finally {
@@ -278,7 +367,9 @@ export default function KillSwitch() {
     }
   };
 
-  const totalResources = counts ? counts.ec2 + counts.s3 + counts.rds : null;
+  const totalResources = resources
+    ? resources.ec2.length + resources.s3.length + resources.rds.length
+    : 0;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -291,73 +382,117 @@ export default function KillSwitch() {
           <div>
             <h2 className="text-lg font-semibold text-red-400 mb-2">Emergency Shutdown</h2>
             <p className="text-sm text-slate-400">
-              The Kill Switch will permanently destroy all cloud resources including EC2 instances,
-              S3 buckets, RDS databases, and any associated data. This action cannot be undone.
+              Select the resources you want to destroy, then click the button below. EC2 instances and
+              S3 buckets are permanently deleted. RDS databases are stopped.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Kill Switch button container */}
-      <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-8 text-center">
-        {/* Live resource summary */}
-        <div className="grid grid-cols-3 gap-4 mb-8 p-4 bg-slate-900/50 rounded-xl">
-          <div>
-            <div className="text-2xl font-bold text-blue-400">
-              {counts ? counts.ec2 : <span className="inline-block w-8 h-6 bg-slate-700 rounded animate-pulse" />}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">EC2 Instances</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-green-400">
-              {counts ? counts.s3 : <span className="inline-block w-8 h-6 bg-slate-700 rounded animate-pulse" />}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">S3 Buckets</div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold text-amber-400">
-              {counts ? counts.rds : <span className="inline-block w-8 h-6 bg-slate-700 rounded animate-pulse" />}
-            </div>
-            <div className="text-xs text-slate-500 mt-1">RDS Databases</div>
+      {/* Resource selection panel */}
+      <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium text-slate-300">Select Resources to Destroy</h3>
+          <div className="flex items-center gap-4">
+            {totalSelected > 0 && (
+              <span className="text-xs text-red-400 font-medium">{totalSelected} selected</span>
+            )}
+            <button
+              onClick={() => {
+                if (resources) {
+                  setSelectedEC2(new Set(resources.ec2.map((r) => r.id)));
+                  setSelectedS3(new Set(resources.s3.map((r) => r.id)));
+                  setSelectedRDS(new Set(resources.rds.map((r) => r.id)));
+                }
+              }}
+              disabled={!resources || totalResources === 0}
+              className="text-xs text-slate-400 hover:text-white transition-colors disabled:opacity-40"
+            >
+              Select all
+            </button>
+            <button
+              onClick={() => { setSelectedEC2(new Set()); setSelectedS3(new Set()); setSelectedRDS(new Set()); }}
+              disabled={totalSelected === 0}
+              className="text-xs text-slate-400 hover:text-white transition-colors disabled:opacity-40"
+            >
+              Clear all
+            </button>
           </div>
         </div>
 
-        {/* Big red button */}
+        {loadingResources ? (
+          <div className="flex items-center justify-center py-12 text-slate-500 gap-2">
+            <Loader2 size={18} className="animate-spin" />
+            <span className="text-sm">Loading resources…</span>
+          </div>
+        ) : totalResources === 0 ? (
+          <div className="text-center py-12 text-slate-500 text-sm">No active resources found</div>
+        ) : (
+          <div className="space-y-3">
+            {resources && resources.ec2.length > 0 && (
+              <ResourceGroup
+                title="EC2 Instances"
+                icon={<Server size={14} className="text-blue-400" />}
+                items={resources.ec2}
+                selected={selectedEC2}
+                onToggle={(id) => toggle(selectedEC2, setSelectedEC2, id)}
+                onToggleAll={() => toggleGroup(resources.ec2, selectedEC2, setSelectedEC2)}
+              />
+            )}
+            {resources && resources.s3.length > 0 && (
+              <ResourceGroup
+                title="S3 Buckets"
+                icon={<Archive size={14} className="text-green-400" />}
+                items={resources.s3}
+                selected={selectedS3}
+                onToggle={(id) => toggle(selectedS3, setSelectedS3, id)}
+                onToggleAll={() => toggleGroup(resources.s3, selectedS3, setSelectedS3)}
+              />
+            )}
+            {resources && resources.rds.length > 0 && (
+              <ResourceGroup
+                title="RDS Databases"
+                icon={<Database size={14} className="text-amber-400" />}
+                items={resources.rds}
+                selected={selectedRDS}
+                onToggle={(id) => toggle(selectedRDS, setSelectedRDS, id)}
+                onToggleAll={() => toggleGroup(resources.rds, selectedRDS, setSelectedRDS)}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Destroy button */}
+      <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-8 text-center">
         <div className="relative inline-block">
           <div className={`absolute inset-0 bg-red-500 rounded-full blur-xl transition-opacity duration-300 ${isPressed ? 'opacity-50' : 'opacity-20'}`} />
           <button
             onMouseDown={() => setIsPressed(true)}
             onMouseUp={() => setIsPressed(false)}
             onMouseLeave={() => setIsPressed(false)}
-            onClick={handleDestroyAll}
-            disabled={initiating || executing || totalResources === 0}
-            className={`relative w-48 h-48 rounded-full bg-gradient-to-b from-red-500 to-red-700 border-4 border-red-400/50 shadow-2xl flex flex-col items-center justify-center gap-3 transition-all duration-150 hover:from-red-400 hover:to-red-600 focus:outline-none focus:ring-4 focus:ring-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${isPressed ? 'scale-95 shadow-lg' : 'scale-100'}`}
+            onClick={handleDestroySelected}
+            disabled={initiating || executing || totalSelected === 0}
+            className={`relative w-48 h-48 rounded-full bg-gradient-to-b from-red-500 to-red-700 border-4 border-red-400/50 shadow-2xl flex flex-col items-center justify-center gap-2 transition-all duration-150 hover:from-red-400 hover:to-red-600 focus:outline-none focus:ring-4 focus:ring-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed ${isPressed ? 'scale-95 shadow-lg' : 'scale-100'}`}
           >
             {initiating || executing
               ? <Loader2 size={48} className="text-white animate-spin" />
               : <Power size={48} className="text-white" />}
-            <span className="text-white font-bold text-lg">
-              {initiating ? 'INITIATING…' : executing ? 'DESTROYING…' : 'DESTROY ALL'}
+            <span className="text-white font-bold text-sm text-center leading-tight px-3">
+              {initiating ? 'INITIATING…' : executing ? 'DESTROYING…' : totalSelected === 0
+                ? 'SELECT\nRESOURCES'
+                : (
+                  <>DESTROY<br />SELECTED<br />({totalSelected})</>
+                )}
             </span>
           </button>
         </div>
-
-        <p className="text-red-400 text-sm font-medium mt-8">This action is irreversible</p>
+        <p className="text-red-400 text-sm font-medium mt-8">
+          {totalSelected === 0 ? 'Select resources above to enable' : 'This action is irreversible'}
+        </p>
         <p className="text-slate-500 text-xs mt-2">You will be asked to verify with OTP before proceeding</p>
       </div>
 
-      {/* What will be destroyed */}
-      <div className="mt-6 p-4 bg-slate-800/30 border border-slate-700/30 rounded-xl">
-        <h3 className="text-sm font-medium text-slate-300 mb-2">What will be destroyed:</h3>
-        <ul className="text-xs text-slate-500 space-y-1">
-          <li>• All running EC2 instances will be terminated</li>
-          <li>• All S3 buckets and their contents will be permanently deleted</li>
-          <li>• All running RDS databases will be stopped</li>
-          <li>• Associated EBS volumes and other compute resources</li>
-        </ul>
-      </div>
-
-      {/* OTP Modal */}
       <OTPModal
         isOpen={otpModalOpen}
         generatedOtp={generatedOtp}
@@ -366,7 +501,6 @@ export default function KillSwitch() {
         onVerified={handleVerified}
       />
 
-      {/* Result Modal */}
       <ResultModal
         result={execResult}
         onClose={() => setExecResult(null)}

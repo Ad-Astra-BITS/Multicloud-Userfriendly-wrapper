@@ -23,6 +23,33 @@ import {
 import { ApiResponse } from '../types';
 import crypto from 'crypto';
 
+/** GET /api/kill-switch/resources */
+export async function listResources(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const clients = req.awsClients;
+    const [ec2, s3, rds] = await Promise.all([
+      listEC2Instances(clients),
+      listS3Buckets(clients),
+      listRDSInstances(clients),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        ec2: ec2
+          .filter((r) => r.status !== 'terminated')
+          .map((r) => ({ id: r.awsId, name: r.name, status: r.status, region: r.region })),
+        s3: s3.map((r) => ({ id: r.name, name: r.name, region: r.region })),
+        rds: rds
+          .filter((r) => r.status !== 'terminated')
+          .map((r) => ({ id: r.awsId, name: r.name, status: r.status, region: r.region })),
+      },
+    } satisfies ApiResponse);
+  } catch (err) {
+    next(err);
+  }
+}
+
 /** POST /api/kill-switch/initiate */
 export async function initiate(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -87,10 +114,13 @@ export async function verify(req: Request, res: Response, next: NextFunction): P
   }
 }
 
-/** POST /api/kill-switch/execute  body: { execToken: string } */
+/** POST /api/kill-switch/execute  body: { execToken: string, selectedResources?: { ec2?: string[], s3?: string[], rds?: string[] } } */
 export async function execute(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { execToken } = req.body as { execToken: string };
+    const { execToken, selectedResources } = req.body as {
+      execToken: string;
+      selectedResources?: { ec2?: string[]; s3?: string[]; rds?: string[] };
+    };
     const expiry = executionTokens.get(execToken ?? '');
 
     if (!expiry || Date.now() > expiry) {
@@ -112,17 +142,28 @@ export async function execute(req: Request, res: Response, next: NextFunction): 
     const allS3 = s3Buckets.map((r) => r.name);
     const runningRDS = rdsInstances.filter((r) => r.status === 'running').map((r) => r.awsId);
 
+    // If selectedResources provided, only act on the intersection with live running resources
+    const targetEC2 = selectedResources?.ec2
+      ? runningEC2.filter((id) => selectedResources.ec2!.includes(id))
+      : runningEC2;
+    const targetS3 = selectedResources?.s3
+      ? allS3.filter((name) => selectedResources.s3!.includes(name))
+      : allS3;
+    const targetRDS = selectedResources?.rds
+      ? runningRDS.filter((id) => selectedResources.rds!.includes(id))
+      : runningRDS;
+
     const errors: string[] = [];
 
-    if (runningEC2.length > 0) {
-      await terminateEC2Instances(runningEC2, clients).catch((e) => errors.push(`EC2: ${e.message}`));
+    if (targetEC2.length > 0) {
+      await terminateEC2Instances(targetEC2, clients).catch((e) => errors.push(`EC2: ${e.message}`));
     }
 
-    for (const bucketName of allS3) {
+    for (const bucketName of targetS3) {
       await deleteS3Bucket(bucketName, clients).catch((e) => errors.push(`S3 ${bucketName}: ${e.message}`));
     }
 
-    for (const dbId of runningRDS) {
+    for (const dbId of targetRDS) {
       await stopRDSInstance(dbId, clients).catch((e) => errors.push(`RDS ${dbId}: ${e.message}`));
     }
 
@@ -131,13 +172,13 @@ export async function execute(req: Request, res: Response, next: NextFunction): 
     res.json({
       success: true,
       data: {
-        terminatedEC2: runningEC2.length,
-        deletedS3: allS3.length,
-        stoppedRDS: runningRDS.length,
+        terminatedEC2: targetEC2.length,
+        deletedS3: targetS3.length,
+        stoppedRDS: targetRDS.length,
         errors,
       },
       message: errors.length === 0
-        ? `Kill switch executed: ${runningEC2.length} EC2 terminated, ${allS3.length} S3 deleted, ${runningRDS.length} RDS stopped.`
+        ? `Kill switch executed: ${targetEC2.length} EC2 terminated, ${targetS3.length} S3 deleted, ${targetRDS.length} RDS stopped.`
         : `Partial execution — ${errors.length} error(s). Check data.errors for details.`,
     } satisfies ApiResponse);
   } catch (err) {

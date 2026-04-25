@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { initiate, verify, execute } from '../controllers/killSwitchController';
+import { listResources, initiate, verify, execute } from '../controllers/killSwitchController';
 
 const router = Router();
 
+router.get('/resources', listResources);
 router.post('/initiate', initiate);
 router.post('/verify', verify);
 router.post('/execute', execute);
