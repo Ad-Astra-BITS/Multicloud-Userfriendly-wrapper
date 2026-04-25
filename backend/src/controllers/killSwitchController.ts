@@ -37,11 +37,11 @@ export async function listResources(req: Request, res: Response, next: NextFunct
       success: true,
       data: {
         ec2: ec2
-          .filter((r) => r.status !== 'terminated')
+          .filter((r) => r.status === 'running')
           .map((r) => ({ id: r.awsId, name: r.name, status: r.status, region: r.region })),
         s3: s3.map((r) => ({ id: r.name, name: r.name, region: r.region })),
         rds: rds
-          .filter((r) => r.status !== 'terminated')
+          .filter((r) => r.status === 'running')
           .map((r) => ({ id: r.awsId, name: r.name, status: r.status, region: r.region })),
       },
     } satisfies ApiResponse);
