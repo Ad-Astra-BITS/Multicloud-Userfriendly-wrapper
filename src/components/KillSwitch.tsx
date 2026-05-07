@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Power, AlertTriangle, X, Shield, Check, Loader2, Server, Database, Archive } from 'lucide-react';
 import { api } from '@/lib/api';
+import { doDropletsApi, doDatabasesApi, DODroplet, DODatabase } from '@/lib/doApi';
+import { useDO } from '@/context/DOContext';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -24,6 +26,15 @@ interface ExecuteResult {
   deletedS3: number;
   stoppedRDS: number;
   errors: string[];
+}
+
+// ── DO resource item shapes ────────────────────────────────────────────────
+
+interface DOResourceItem {
+  id: string; // string-coerced for consistency
+  name: string;
+  region?: string;
+  status?: string;
 }
 
 // ── Resource Group ─────────────────────────────────────────────────────────────
@@ -280,12 +291,22 @@ function ResultModal({ result, onClose }: ResultModalProps) {
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function KillSwitch() {
+  // ── AWS state ──────────────────────────────────────────────────────────────
   const [resources, setResources] = useState<ResourceList | null>(null);
   const [loadingResources, setLoadingResources] = useState(true);
   const [selectedEC2, setSelectedEC2] = useState<Set<string>>(new Set());
   const [selectedS3, setSelectedS3] = useState<Set<string>>(new Set());
   const [selectedRDS, setSelectedRDS] = useState<Set<string>>(new Set());
 
+  // ── DO state ───────────────────────────────────────────────────────────────
+  const { isConnected: doConnected } = useDO();
+  const [doDroplets, setDoDroplets] = useState<DOResourceItem[]>([]);
+  const [doDatabases, setDoDatabases] = useState<DOResourceItem[]>([]);
+  const [loadingDO, setLoadingDO] = useState(false);
+  const [selectedDroplets, setSelectedDroplets] = useState<Set<string>>(new Set());
+  const [selectedDODBs, setSelectedDODBs] = useState<Set<string>>(new Set());
+
+  // ── Shared kill-switch state ───────────────────────────────────────────────
   const [isPressed, setIsPressed] = useState(false);
   const [initiating, setInitiating] = useState(false);
 
@@ -305,6 +326,35 @@ export default function KillSwitch() {
   };
 
   useEffect(() => { fetchResources(); }, []);
+
+  // Fetch DO resources when DO account is connected
+  useEffect(() => {
+    if (!doConnected) {
+      setDoDroplets([]);
+      setDoDatabases([]);
+      return;
+    }
+    setLoadingDO(true);
+    Promise.allSettled([
+      doDropletsApi.list(),
+      doDatabasesApi.list(),
+    ]).then(([dropletsRes, dbsRes]) => {
+      if (dropletsRes.status === 'fulfilled') {
+        setDoDroplets(
+          dropletsRes.value
+            .filter((d: DODroplet) => d.status === 'active')
+            .map((d: DODroplet) => ({ id: String(d.id), name: d.name, region: d.region, status: d.status })),
+        );
+      }
+      if (dbsRes.status === 'fulfilled') {
+        setDoDatabases(
+          dbsRes.value
+            .filter((d: DODatabase) => d.status === 'online')
+            .map((d: DODatabase) => ({ id: d.id, name: d.name, region: d.region, status: d.status })),
+        );
+      }
+    }).finally(() => setLoadingDO(false));
+  }, [doConnected]);
 
   const toggle = (
     selected: Set<string>,
@@ -327,7 +377,7 @@ export default function KillSwitch() {
     setFn(allSelected ? new Set() : new Set(items.map((i) => i.id)));
   };
 
-  const totalSelected = selectedEC2.size + selectedS3.size + selectedRDS.size;
+  const totalSelected = selectedEC2.size + selectedS3.size + selectedRDS.size + selectedDroplets.size + selectedDODBs.size;
 
   const handleDestroySelected = async () => {
     setInitiating(true);
@@ -347,6 +397,7 @@ export default function KillSwitch() {
     setOtpModalOpen(false);
     setExecuting(true);
     try {
+      // Execute AWS resources via the existing kill-switch flow
       const res = await api.post<ExecuteResult>('/kill-switch/execute', {
         execToken,
         selectedResources: {
@@ -355,10 +406,31 @@ export default function KillSwitch() {
           rds: Array.from(selectedRDS),
         },
       });
-      setExecResult(res);
+
+      // Execute DO resources in parallel
+      const doErrors: string[] = [];
+      const dropletIds = Array.from(selectedDroplets).map(Number).filter(Boolean);
+      const dbIds = Array.from(selectedDODBs);
+
+      await Promise.allSettled([
+        dropletIds.length > 0
+          ? doDropletsApi.terminate(dropletIds).catch((e: Error) => { doErrors.push(`DO Droplets: ${e.message}`); })
+          : Promise.resolve(),
+        ...dbIds.map((id) =>
+          doDatabasesApi.stop(id, true).catch((e: Error) => { doErrors.push(`DO DB ${id}: ${e.message}`); }),
+        ),
+      ]);
+
+      setExecResult({
+        ...res,
+        errors: [...(res.errors ?? []), ...doErrors],
+      });
+
       setSelectedEC2(new Set());
       setSelectedS3(new Set());
       setSelectedRDS(new Set());
+      setSelectedDroplets(new Set());
+      setSelectedDODBs(new Set());
       fetchResources();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Execution failed');
@@ -420,12 +492,12 @@ export default function KillSwitch() {
           </div>
         </div>
 
-        {loadingResources ? (
+        {loadingResources || loadingDO ? (
           <div className="flex items-center justify-center py-12 text-slate-500 gap-2">
             <Loader2 size={18} className="animate-spin" />
             <span className="text-sm">Loading resources…</span>
           </div>
-        ) : totalResources === 0 ? (
+        ) : totalResources === 0 && doDroplets.length === 0 && doDatabases.length === 0 ? (
           <div className="text-center py-12 text-slate-500 text-sm">No active resources found</div>
         ) : (
           <div className="space-y-3">
@@ -458,6 +530,46 @@ export default function KillSwitch() {
                 onToggle={(id) => toggle(selectedRDS, setSelectedRDS, id)}
                 onToggleAll={() => toggleGroup(resources.rds, selectedRDS, setSelectedRDS)}
               />
+            )}
+
+            {/* ── DigitalOcean Resources ─────────────────────── */}
+            {doConnected && (
+              <>
+                <div className="pt-2 pb-1">
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <svg viewBox="0 0 24 24" className="w-3 h-3" fill="#0080FF">
+                      <path d="M12.003 0C5.375 0 0 5.375 0 12.003c0 6.625 5.375 12 12.003 12 6.625 0 12-5.375 12-12C24.003 5.375 18.628 0 12.003 0zm-.006 19.308v-3.24c3.408 0 5.963-3.24 4.66-6.82-.514-1.397-1.65-2.533-3.048-3.047-3.578-1.304-6.82 1.252-6.82 4.66H3.549C3.549 6.12 8.556 1.575 14.38 3.198c2.627.74 4.76 2.87 5.5 5.5 1.623 5.824-2.927 10.83-7.862 10.61z" />
+                    </svg>
+                    DigitalOcean
+                  </span>
+                </div>
+                {doDroplets.length > 0 && (
+                  <ResourceGroup
+                    title="DO Droplets (active)"
+                    icon={<Server size={14} className="text-blue-400" />}
+                    items={doDroplets}
+                    selected={selectedDroplets}
+                    onToggle={(id) => toggle(selectedDroplets, setSelectedDroplets, id)}
+                    onToggleAll={() => toggleGroup(doDroplets, selectedDroplets, setSelectedDroplets)}
+                  />
+                )}
+                {doDatabases.length > 0 && (
+                  <ResourceGroup
+                    title="DO Databases (online)"
+                    icon={<Database size={14} className="text-teal-400" />}
+                    items={doDatabases}
+                    selected={selectedDODBs}
+                    onToggle={(id) => toggle(selectedDODBs, setSelectedDODBs, id)}
+                    onToggleAll={() => toggleGroup(doDatabases, selectedDODBs, setSelectedDODBs)}
+                  />
+                )}
+                {doDroplets.length === 0 && doDatabases.length === 0 && !loadingDO && (
+                  <p className="text-xs text-slate-500 italic px-1">No active DO resources found.</p>
+                )}
+              </>
+            )}
+            {!doConnected && (
+              <p className="text-xs text-slate-500 italic px-1 pt-2">Connect DigitalOcean in Settings to include DO resources.</p>
             )}
           </div>
         )}

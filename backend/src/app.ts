@@ -19,9 +19,15 @@ app.use(
     allowedHeaders: [
       'Content-Type',
       'Authorization',
+      // AWS
       'x-aws-access-key-id',
       'x-aws-secret-access-key',
       'x-aws-region',
+      // DigitalOcean
+      'x-do-api-token',
+      'x-do-spaces-key',
+      'x-do-spaces-secret',
+      'x-do-spaces-region',
     ],
   }),
 );

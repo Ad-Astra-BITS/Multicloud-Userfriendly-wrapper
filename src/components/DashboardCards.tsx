@@ -19,6 +19,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { doDropletsApi, doSpacesApi, doDatabasesApi } from '@/lib/doApi';
+import { useDO } from '@/context/DOContext';
 import { DashboardSummary } from '@/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -192,6 +194,11 @@ export default function DashboardCards() {
   const [loadingAlerts, setLoadingAlerts] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // DO resource counts
+  const { isConnected: doConnected } = useDO();
+  const [doLoading, setDoLoading] = useState(false);
+  const [doCounts, setDoCounts] = useState<{ droplets: number; spaces: number; databases: number } | null>(null);
+
   useEffect(() => {
     api.get<DashboardSummary>('/analytics/summary')
       .then(setSummary)
@@ -203,6 +210,22 @@ export default function DashboardCards() {
       .catch(() => setAlerts([]))
       .finally(() => setLoadingAlerts(false));
   }, []);
+
+  useEffect(() => {
+    if (!doConnected) { setDoCounts(null); return; }
+    setDoLoading(true);
+    Promise.allSettled([
+      doDropletsApi.list(),
+      doSpacesApi.list(),
+      doDatabasesApi.list(),
+    ]).then(([d, s, db]) => {
+      setDoCounts({
+        droplets: d.status === 'fulfilled' ? d.value.length : 0,
+        spaces: s.status === 'fulfilled' ? s.value.length : 0,
+        databases: db.status === 'fulfilled' ? db.value.length : 0,
+      });
+    }).finally(() => setDoLoading(false));
+  }, [doConnected]);
 
   return (
     <div className="space-y-4">
@@ -245,6 +268,48 @@ export default function DashboardCards() {
         />
 
         <AlertsCard alerts={alerts} loading={loadingAlerts} />
+
+        {/* DigitalOcean resources card */}
+        {doConnected && (
+          <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-5 bg-gradient-to-br from-blue-500/10 to-blue-600/10">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-400">DigitalOcean</p>
+                {doLoading ? (
+                  <div className="flex items-center gap-2 mt-2 text-slate-400"><Loader2 size={14} className="animate-spin" /><span className="text-xs">Loading…</span></div>
+                ) : doCounts ? (
+                  <p className="text-2xl font-bold text-white mt-1">
+                    {doCounts.droplets + doCounts.spaces + doCounts.databases}
+                  </p>
+                ) : (
+                  <p className="text-2xl font-bold text-slate-500 mt-1">—</p>
+                )}
+                <p className="text-slate-400 text-sm mt-1">Active Resources</p>
+              </div>
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-blue-500/20">
+                <svg viewBox="0 0 24 24" className="w-6 h-6" fill="#0080FF">
+                  <path d="M12.003 0C5.375 0 0 5.375 0 12.003c0 6.625 5.375 12 12.003 12 6.625 0 12-5.375 12-12C24.003 5.375 18.628 0 12.003 0zm-.006 19.308v-3.24c3.408 0 5.963-3.24 4.66-6.82-.514-1.397-1.65-2.533-3.048-3.047-3.578-1.304-6.82 1.252-6.82 4.66H3.549C3.549 6.12 8.556 1.575 14.38 3.198c2.627.74 4.76 2.87 5.5 5.5 1.623 5.824-2.927 10.83-7.862 10.61z" />
+                </svg>
+              </div>
+            </div>
+            {doCounts && (
+              <div className="mt-4 pt-4 border-t border-slate-700/50 grid grid-cols-3 gap-2">
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-white">{doCounts.droplets}</p>
+                  <p className="text-xs text-slate-500">Droplets</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-white">{doCounts.spaces}</p>
+                  <p className="text-xs text-slate-500">Spaces</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-white">{doCounts.databases}</p>
+                  <p className="text-xs text-slate-500">Databases</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
