@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Power, AlertTriangle, X, Shield, Check, Loader2, Server, Database, Archive } from 'lucide-react';
+import { Power, AlertTriangle, X, Shield, Check, Loader2, Server, Database, Archive, HardDrive } from 'lucide-react';
 import { api } from '@/lib/api';
-import { doDropletsApi, doDatabasesApi, DODroplet, DODatabase } from '@/lib/doApi';
+import { doDropletsApi, doDatabasesApi, doSpacesApi, DODroplet, DODatabase, DOSpace } from '@/lib/doApi';
 import { useDO } from '@/context/DOContext';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -302,9 +302,11 @@ export default function KillSwitch() {
   const { isConnected: doConnected } = useDO();
   const [doDroplets, setDoDroplets] = useState<DOResourceItem[]>([]);
   const [doDatabases, setDoDatabases] = useState<DOResourceItem[]>([]);
+  const [doSpaces, setDoSpaces] = useState<DOResourceItem[]>([]);
   const [loadingDO, setLoadingDO] = useState(false);
   const [selectedDroplets, setSelectedDroplets] = useState<Set<string>>(new Set());
   const [selectedDODBs, setSelectedDODBs] = useState<Set<string>>(new Set());
+  const [selectedDOSpaces, setSelectedDOSpaces] = useState<Set<string>>(new Set());
 
   // ── Shared kill-switch state ───────────────────────────────────────────────
   const [isPressed, setIsPressed] = useState(false);
@@ -332,13 +334,15 @@ export default function KillSwitch() {
     if (!doConnected) {
       setDoDroplets([]);
       setDoDatabases([]);
+      setDoSpaces([]);
       return;
     }
     setLoadingDO(true);
     Promise.allSettled([
       doDropletsApi.list(),
       doDatabasesApi.list(),
-    ]).then(([dropletsRes, dbsRes]) => {
+      doSpacesApi.list(),
+    ]).then(([dropletsRes, dbsRes, spacesRes]) => {
       if (dropletsRes.status === 'fulfilled') {
         setDoDroplets(
           dropletsRes.value
@@ -351,6 +355,12 @@ export default function KillSwitch() {
           dbsRes.value
             .filter((d: DODatabase) => d.status === 'online')
             .map((d: DODatabase) => ({ id: d.id, name: d.name, region: d.region, status: d.status })),
+        );
+      }
+      if (spacesRes.status === 'fulfilled') {
+        setDoSpaces(
+          spacesRes.value
+            .map((s: DOSpace) => ({ id: `${s.region}/${s.name}`, name: s.name, region: s.region })),
         );
       }
     }).finally(() => setLoadingDO(false));
@@ -377,7 +387,7 @@ export default function KillSwitch() {
     setFn(allSelected ? new Set() : new Set(items.map((i) => i.id)));
   };
 
-  const totalSelected = selectedEC2.size + selectedS3.size + selectedRDS.size + selectedDroplets.size + selectedDODBs.size;
+  const totalSelected = selectedEC2.size + selectedS3.size + selectedRDS.size + selectedDroplets.size + selectedDODBs.size + selectedDOSpaces.size;
 
   const handleDestroySelected = async () => {
     setInitiating(true);
@@ -397,33 +407,52 @@ export default function KillSwitch() {
     setOtpModalOpen(false);
     setExecuting(true);
     try {
-      // Execute AWS resources via the existing kill-switch flow
-      const res = await api.post<ExecuteResult>('/kill-switch/execute', {
-        execToken,
-        selectedResources: {
-          ec2: Array.from(selectedEC2),
-          s3: Array.from(selectedS3),
-          rds: Array.from(selectedRDS),
-        },
-      });
+      const allErrors: string[] = [];
 
-      // Execute DO resources in parallel
-      const doErrors: string[] = [];
+      // ── AWS execution (only when AWS resources are selected) ────────────
+      const hasAWS = selectedEC2.size > 0 || selectedS3.size > 0 || selectedRDS.size > 0;
+      let awsResult: ExecuteResult = { terminatedEC2: 0, deletedS3: 0, stoppedRDS: 0, errors: [] };
+
+      if (hasAWS) {
+        try {
+          awsResult = await api.post<ExecuteResult>('/kill-switch/execute', {
+            execToken,
+            selectedResources: {
+              ec2: Array.from(selectedEC2),
+              s3: Array.from(selectedS3),
+              rds: Array.from(selectedRDS),
+            },
+          });
+          allErrors.push(...(awsResult.errors ?? []));
+        } catch (e: unknown) {
+          allErrors.push(`AWS: ${e instanceof Error ? e.message : 'Execution failed'}`);
+        }
+      }
+
+      // ── DO execution (runs independently of AWS outcome) ───────────────
       const dropletIds = Array.from(selectedDroplets).map(Number).filter(Boolean);
       const dbIds = Array.from(selectedDODBs);
+      // Each space ID is encoded as "region/name"
+      const spaceEntries = Array.from(selectedDOSpaces).map((id) => {
+        const [region, ...nameParts] = id.split('/');
+        return { region, name: nameParts.join('/') };
+      });
 
       await Promise.allSettled([
         dropletIds.length > 0
-          ? doDropletsApi.terminate(dropletIds).catch((e: Error) => { doErrors.push(`DO Droplets: ${e.message}`); })
+          ? doDropletsApi.terminate(dropletIds).catch((e: Error) => { allErrors.push(`DO Droplets: ${e.message}`); })
           : Promise.resolve(),
         ...dbIds.map((id) =>
-          doDatabasesApi.stop(id, true).catch((e: Error) => { doErrors.push(`DO DB ${id}: ${e.message}`); }),
+          doDatabasesApi.stop(id, true).catch((e: Error) => { allErrors.push(`DO DB ${id}: ${e.message}`); }),
+        ),
+        ...spaceEntries.map(({ region, name }) =>
+          doSpacesApi.delete(region, name).catch((e: Error) => { allErrors.push(`DO Space ${name}: ${e.message}`); }),
         ),
       ]);
 
       setExecResult({
-        ...res,
-        errors: [...(res.errors ?? []), ...doErrors],
+        ...awsResult,
+        errors: allErrors,
       });
 
       setSelectedEC2(new Set());
@@ -431,6 +460,7 @@ export default function KillSwitch() {
       setSelectedRDS(new Set());
       setSelectedDroplets(new Set());
       setSelectedDODBs(new Set());
+      setSelectedDOSpaces(new Set());
       fetchResources();
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Execution failed');
@@ -563,7 +593,17 @@ export default function KillSwitch() {
                     onToggleAll={() => toggleGroup(doDatabases, selectedDODBs, setSelectedDODBs)}
                   />
                 )}
-                {doDroplets.length === 0 && doDatabases.length === 0 && !loadingDO && (
+                {doSpaces.length > 0 && (
+                  <ResourceGroup
+                    title="DO Spaces (Object Storage)"
+                    icon={<HardDrive size={14} className="text-cyan-400" />}
+                    items={doSpaces}
+                    selected={selectedDOSpaces}
+                    onToggle={(id) => toggle(selectedDOSpaces, setSelectedDOSpaces, id)}
+                    onToggleAll={() => toggleGroup(doSpaces, selectedDOSpaces, setSelectedDOSpaces)}
+                  />
+                )}
+                {doDroplets.length === 0 && doDatabases.length === 0 && doSpaces.length === 0 && !loadingDO && (
                   <p className="text-xs text-slate-500 italic px-1">No active DO resources found.</p>
                 )}
               </>
