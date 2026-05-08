@@ -40,8 +40,22 @@ export default function ConnectDOModal() {
   const [showToken, setShowToken] = useState(false);
   const [spacesKey, setSpacesKey] = useState('');
   const [spacesSecret, setSpacesSecret] = useState('');
+  const [spacesBucket, setSpacesBucket] = useState('');
+  const [spacesRegion, setSpacesRegion] = useState('nyc3');
   const [showSpacesSecret, setShowSpacesSecret] = useState(false);
   const [showSpacesFields, setShowSpacesFields] = useState(false);
+
+  const SPACES_REGIONS = [
+    { value: 'nyc3', label: 'New York 3 (nyc3)' },
+    { value: 'sfo2', label: 'San Francisco 2 (sfo2)' },
+    { value: 'sfo3', label: 'San Francisco 3 (sfo3)' },
+    { value: 'ams3', label: 'Amsterdam 3 (ams3)' },
+    { value: 'sgp1', label: 'Singapore 1 (sgp1)' },
+    { value: 'fra1', label: 'Frankfurt 1 (fra1)' },
+    { value: 'tor1', label: 'Toronto 1 (tor1)' },
+    { value: 'blr1', label: 'Bangalore 1 (blr1)' },
+    { value: 'syd1', label: 'Sydney 1 (syd1)' },
+  ];
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +68,8 @@ export default function ConnectDOModal() {
     setShowToken(false);
     setSpacesKey('');
     setSpacesSecret('');
+    setSpacesBucket('');
+    setSpacesRegion('nyc3');
     setShowSpacesSecret(false);
     setShowSpacesFields(false);
     setError(null);
@@ -86,6 +102,8 @@ export default function ConnectDOModal() {
           apiToken: apiToken.trim(),
           spacesKey: spacesKey.trim() || undefined,
           spacesSecret: spacesSecret.trim() || undefined,
+          spacesBucket: spacesBucket.trim() || undefined,
+          spacesRegion: spacesRegion || undefined,
           email: info.email,
           uuid: info.uuid,
         });
@@ -237,6 +255,35 @@ export default function ConnectDOModal() {
                       </button>
                     </div>
                   </div>
+                  {/* Spaces Bucket Name */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Spaces Bucket Name</label>
+                    <input
+                      type="text"
+                      value={spacesBucket}
+                      onChange={(e) => setSpacesBucket(e.target.value)}
+                      placeholder="e.g. my-space"
+                      disabled={loading || !!success}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 font-mono text-xs focus:outline-none focus:border-teal-500/60 focus:ring-1 focus:ring-teal-500/30 disabled:opacity-50 transition-colors"
+                    />
+                  </div>
+                  {/* Spaces Region */}
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-1">Spaces Region</label>
+                    <select
+                      value={spacesRegion}
+                      onChange={(e) => setSpacesRegion(e.target.value)}
+                      disabled={loading || !!success}
+                      className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white text-xs focus:outline-none focus:border-teal-500/60 focus:ring-1 focus:ring-teal-500/30 disabled:opacity-50 transition-colors appearance-none cursor-pointer"
+                    >
+                      {SPACES_REGIONS.map((r) => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-500 mt-1">
+                      The region from your Space&apos;s origin endpoint, e.g. <code className="text-teal-400 bg-teal-500/10 px-1 rounded">bucket.sfo3.digitaloceanspaces.com</code> → <strong className="text-slate-300">sfo3</strong>
+                    </p>
+                  </div>
                   <p className="text-xs text-slate-500">
                     Generate Spaces keys at{' '}
                     <a
@@ -248,7 +295,6 @@ export default function ConnectDOModal() {
                       cloud.digitalocean.com/spaces <ExternalLink size={10} />
                     </a>
                     {' '}→ Settings → Spaces access keys.
-                    <br />Spaces are listed automatically across all regions — no region selection needed.
                   </p>
                 </div>
               )}

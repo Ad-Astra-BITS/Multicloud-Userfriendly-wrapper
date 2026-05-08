@@ -6,7 +6,7 @@ import {
   HeadBucketCommand,
   PutBucketLifecycleConfigurationCommand,
   ListObjectsV2Command,
-  DeleteObjectsCommand,
+  DeleteObjectCommand,
   DeleteBucketCommand,
 } from '@aws-sdk/client-s3';
 import {
@@ -176,6 +176,7 @@ export class DigitalOceanResourceService {
   private readonly api: AxiosInstance;
   private readonly spacesKey?: string;
   private readonly spacesSecret?: string;
+  private readonly spacesBucket?: string;
   private readonly defaultSpacesRegion: DOSpacesRegion;
 
   /**
@@ -187,6 +188,7 @@ export class DigitalOceanResourceService {
     this.api = createDoApiClient(creds.apiToken);
     this.spacesKey = creds.spacesKey;
     this.spacesSecret = creds.spacesSecret;
+    this.spacesBucket = creds.spacesBucket;
     this.defaultSpacesRegion = creds.spacesRegion ?? 'nyc3';
   }
 
@@ -336,15 +338,58 @@ export class DigitalOceanResourceService {
       );
     }
 
-    const listClient = this.getSpacesClient('nyc3');
-    let rawBuckets: Array<{ Name?: string; CreationDate?: Date }>;
+    // Strategy 1: Try ListBuckets (requires "All" permission level).
+    // This is the most reliable approach and returns all Spaces across regions.
     try {
+      const listClient = this.getSpacesClient(this.defaultSpacesRegion);
       const res = await listClient.send(new ListBucketsCommand({}));
-      rawBuckets = res.Buckets ?? [];
+      const rawBuckets = res.Buckets ?? [];
+
+      if (rawBuckets.length === 0) return [];
+
+      const spaceResults = await Promise.allSettled(
+        rawBuckets
+          .filter((b) => b.Name)
+          .map(async (bucket): Promise<DOSpaceResource> => {
+            const name = bucket.Name!;
+            const region = await this.resolveBucketRegion(name, listClient);
+            return { name, region, creationDate: bucket.CreationDate };
+          }),
+      );
+
+      return spaceResults
+        .filter(
+          (r): r is PromiseFulfilledResult<DOSpaceResource> =>
+            r.status === 'fulfilled',
+        )
+        .map((r) => r.value);
+    } catch {
+      // ListBuckets failed — likely insufficient permissions.
+      // Fall through to Strategy 2.
+    }
+
+    // Strategy 2: HeadBucket on a specific, user-provided bucket name.
+    // Requires only "Read" permissions, but needs the bucket name and region.
+    if (!this.spacesBucket) {
+      return [];
+    }
+
+    // Use the user-specified region so HeadBucket hits the correct endpoint
+    const client = this.getSpacesClient(this.defaultSpacesRegion);
+
+    try {
+      await client.send(new HeadBucketCommand({ Bucket: this.spacesBucket }));
+      return [{ name: this.spacesBucket, region: this.defaultSpacesRegion }];
     } catch (err: unknown) {
       const errName = (err as { name?: string; Code?: string }).name ??
         (err as { name?: string; Code?: string }).Code ?? '';
       const errMsg = String((err as { message?: string }).message ?? '');
+      const status = (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+
+      if (status === 404 || errName === 'NotFound') {
+        return [];
+      }
+
       const isAuthError =
         errName === 'InvalidAccessKeyId' ||
         errName === 'SignatureDoesNotMatch' ||
@@ -355,36 +400,14 @@ export class DigitalOceanResourceService {
       if (isAuthError) {
         throw new DigitalOceanApiError(
           403,
-          'Invalid Spaces credentials. Please check your Spaces Access Key and Secret Key at ' +
-            'https://cloud.digitalocean.com/spaces.',
+          'Invalid Spaces credentials. Please check your Spaces Access Key and Secret Key.',
         );
       }
       throw new DigitalOceanApiError(
         500,
-        `Failed to list Spaces: ${errMsg || 'Unknown S3-compatible API error'}`,
+        `Failed to access Space: ${errMsg || 'Unknown S3-compatible API error'}`,
       );
     }
-
-    if (rawBuckets.length === 0) return [];
-
-    const locationClient = this.getSpacesClient('nyc3');
-
-    const spaceResults = await Promise.allSettled(
-      rawBuckets
-        .filter((b) => b.Name)
-        .map(async (bucket): Promise<DOSpaceResource> => {
-          const name = bucket.Name!;
-          const region = await this.resolveBucketRegion(name, locationClient);
-          return { name, region, creationDate: bucket.CreationDate };
-        }),
-    );
-
-    return spaceResults
-      .filter(
-        (r): r is PromiseFulfilledResult<DOSpaceResource> =>
-          r.status === 'fulfilled',
-      )
-      .map((r) => r.value);
   }
 
   private async resolveBucketRegion(
@@ -477,16 +500,15 @@ export class DigitalOceanResourceService {
 
       const objects = listed.Contents ?? [];
       if (objects.length > 0) {
-        await client.send(
-          new DeleteObjectsCommand({
-            Bucket: spaceName,
-            Delete: {
-              Objects: objects.map((o) => ({ Key: o.Key! })),
-              // Quiet mode suppresses per-object success entries in the response
-              // to keep the payload small for large buckets
-              Quiet: true,
-            },
-          }),
+        await Promise.all(
+          objects.map((o) =>
+            client.send(
+              new DeleteObjectCommand({
+                Bucket: spaceName,
+                Key: o.Key!,
+              })
+            )
+          )
         );
       }
 

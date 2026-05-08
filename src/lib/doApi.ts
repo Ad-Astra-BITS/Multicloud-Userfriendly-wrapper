@@ -13,6 +13,7 @@ export interface DOStoredCredentials {
   spacesKey?: string;
   spacesSecret?: string;
   spacesRegion?: string;
+  spacesBucket?: string;
   /** The account email returned by GET /v2/account — used for display only */
   email?: string;
   /** DO account UUID — used as the "Account ID" equivalent */
@@ -55,6 +56,7 @@ function createDOClient(): AxiosInstance {
       if (creds.spacesKey) config.headers['x-do-spaces-key'] = creds.spacesKey;
       if (creds.spacesSecret) config.headers['x-do-spaces-secret'] = creds.spacesSecret;
       if (creds.spacesRegion) config.headers['x-do-spaces-region'] = creds.spacesRegion;
+      if (creds.spacesBucket) config.headers['x-do-spaces-bucket'] = creds.spacesBucket;
     }
     return config;
   });

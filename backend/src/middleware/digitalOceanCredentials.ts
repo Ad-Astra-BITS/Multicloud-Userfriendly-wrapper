@@ -44,6 +44,10 @@ export function digitalOceanCredentialsMiddleware(
     'nyc3'
   ) as DOSpacesRegion;
 
-  req.doCredentials = { apiToken, spacesKey, spacesSecret, spacesRegion };
+  const spacesBucket =
+    normalize(req.headers['x-do-spaces-bucket'] as string | undefined) ??
+    normalize(process.env.DO_SPACES_BUCKET);
+
+  req.doCredentials = { apiToken, spacesKey, spacesSecret, spacesRegion, spacesBucket };
   next();
 }

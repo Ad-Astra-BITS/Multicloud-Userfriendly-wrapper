@@ -28,6 +28,7 @@ app.use(
       'x-do-spaces-key',
       'x-do-spaces-secret',
       'x-do-spaces-region',
+      'x-do-spaces-bucket',
     ],
   }),
 );

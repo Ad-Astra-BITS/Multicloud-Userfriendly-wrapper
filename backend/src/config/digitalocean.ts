@@ -26,6 +26,8 @@ export interface DoCredentials {
   /** Spaces secret key — paired with spacesKey */
   spacesSecret?: string;
   spacesRegion?: DOSpacesRegion;
+  /** Specific Spaces bucket name since DO doesn't support ListBuckets */
+  spacesBucket?: string;
 }
 
 export function createDoApiClient(token: string): AxiosInstance {
