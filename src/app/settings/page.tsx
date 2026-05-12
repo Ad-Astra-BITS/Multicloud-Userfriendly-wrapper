@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useAWS } from '@/context/AWSContext';
+import { useDO } from '@/context/DOContext';
 import {
   User,
   Bell,
@@ -116,7 +117,8 @@ function SettingsRow({ label, description, children }: SettingsRowProps) {
 // ============================================
 
 function CloudProvidersSection() {
-  const { isConnected, credentials, openConnectModal, disconnect } = useAWS();
+  const { isConnected: awsConnected, credentials: awsCreds, openConnectModal: openAWS, disconnect: disconnectAWS } = useAWS();
+  const { isConnected: doConnected, credentials: doCreds, openConnectModal: openDO, disconnect: disconnectDO } = useDO();
 
   return (
     <SettingsSection
@@ -125,7 +127,7 @@ function CloudProvidersSection() {
       icon={<Cloud size={20} className="text-purple-400" />}
     >
       <div className="space-y-3">
-        {/* AWS — live connection */}
+        {/* ── AWS ─────────────────────────────────────────────────────── */}
         <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -133,10 +135,10 @@ function CloudProvidersSection() {
                 <Cloud size={20} className="text-orange-400" />
               </div>
               <div>
-                <h4 className="text-sm font-medium text-white">AWS</h4>
-                {isConnected && credentials ? (
+                <h4 className="text-sm font-medium text-white">Amazon Web Services (AWS)</h4>
+                {awsConnected && awsCreds ? (
                   <p className="text-xs text-slate-400 font-mono">
-                    Account {credentials.accountId} · {credentials.region}
+                    Account {awsCreds.accountId} · {awsCreds.region}
                   </p>
                 ) : (
                   <p className="text-xs text-slate-500">No account connected</p>
@@ -144,74 +146,140 @@ function CloudProvidersSection() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {isConnected ? (
+              {awsConnected ? (
                 <>
                   <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400">
-                    <CheckCircle size={11} />
-                    Connected
+                    <CheckCircle size={11} /> Connected
                   </span>
                   <button
-                    onClick={disconnect}
+                    onClick={disconnectAWS}
                     className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-red-500/20 hover:text-red-400 text-slate-300 transition-colors"
                   >
-                    <Unplug size={12} />
-                    Disconnect
+                    <Unplug size={12} /> Disconnect
                   </button>
                 </>
               ) : (
                 <>
                   <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-slate-700 text-slate-400">
-                    <XCircle size={11} />
-                    Not Connected
+                    <XCircle size={11} /> Not Connected
                   </span>
                   <button
-                    onClick={openConnectModal}
+                    onClick={openAWS}
                     className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-400 text-white font-medium transition-colors"
                   >
-                    <Plug size={12} />
-                    Connect
+                    <Plug size={12} /> Connect
                   </button>
                 </>
               )}
             </div>
           </div>
-
-          {isConnected && credentials && (
+          {awsConnected && awsCreds && (
             <div className="mt-3 pt-3 border-t border-slate-700/30 grid grid-cols-2 gap-3">
               <div>
                 <p className="text-xs text-slate-500">Account ID</p>
-                <p className="text-xs font-mono text-slate-300 mt-0.5">{credentials.accountId}</p>
+                <p className="text-xs font-mono text-slate-300 mt-0.5">{awsCreds.accountId}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500">Region</p>
-                <p className="text-xs font-mono text-slate-300 mt-0.5">{credentials.region}</p>
+                <p className="text-xs font-mono text-slate-300 mt-0.5">{awsCreds.region}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500">Access Key</p>
                 <p className="text-xs font-mono text-slate-300 mt-0.5">
-                  {credentials.accessKeyId.slice(0, 8)}••••••••••••
+                  {awsCreds.accessKeyId.slice(0, 8)}••••••••••••
                 </p>
               </div>
               <div>
                 <p className="text-xs text-slate-500">Connected At</p>
                 <p className="text-xs text-slate-300 mt-0.5">
-                  {credentials.connectedAt
-                    ? new Date(credentials.connectedAt).toLocaleString()
-                    : '—'}
+                  {awsCreds.connectedAt ? new Date(awsCreds.connectedAt).toLocaleString() : '—'}
                 </p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Azure — coming soon */}
-        {[
-          { name: 'Azure', color: 'blue' },
-          { name: 'GCP', color: 'red' },
-        ].map((provider) => (
+        {/* ── DigitalOcean ─────────────────────────────────────────────── */}
+        <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                {/* DO shark-fin logo */}
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="#0080FF">
+                  <path d="M12.003 0C5.375 0 0 5.375 0 12.003c0 6.625 5.375 12 12.003 12 6.625 0 12-5.375 12-12C24.003 5.375 18.628 0 12.003 0zm-.006 19.308v-3.24c3.408 0 5.963-3.24 4.66-6.82-.514-1.397-1.65-2.533-3.048-3.047-3.578-1.304-6.82 1.252-6.82 4.66H3.549C3.549 6.12 8.556 1.575 14.38 3.198c2.627.74 4.76 2.87 5.5 5.5 1.623 5.824-2.927 10.83-7.862 10.61z" />
+                  <path d="M12 15.88v3.237H8.764V15.88H12zM8.764 18.244H6.39v-2.375h2.375v2.375zM6.39 15.87H4.41v-1.98h1.98v1.98z" />
+                </svg>
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-white">DigitalOcean</h4>
+                {doConnected && doCreds ? (
+                  <p className="text-xs text-slate-400 font-mono">
+                    {doCreds.email} · {doCreds.spacesKey ? 'Spaces enabled' : 'No Spaces creds'}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500">No account connected</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {doConnected ? (
+                <>
+                  <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-blue-500/20 text-blue-400">
+                    <CheckCircle size={11} /> Connected
+                  </span>
+                  <button
+                    onClick={disconnectDO}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-red-500/20 hover:text-red-400 text-slate-300 transition-colors"
+                  >
+                    <Unplug size={12} /> Disconnect
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-slate-700 text-slate-400">
+                    <XCircle size={11} /> Not Connected
+                  </span>
+                  <button
+                    onClick={openDO}
+                    className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors"
+                  >
+                    <Plug size={12} /> Connect
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          {doConnected && doCreds && (
+            <div className="mt-3 pt-3 border-t border-slate-700/30 grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-slate-500">Email</p>
+                <p className="text-xs font-mono text-slate-300 mt-0.5">{doCreds.email ?? '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">UUID</p>
+                <p className="text-xs font-mono text-slate-300 mt-0.5">{(doCreds.uuid ?? '—').slice(0, 8)}…</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Spaces Keys</p>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  {doCreds.spacesKey ? `${doCreds.spacesKey.slice(0, 6)}•••• (${doCreds.spacesRegion ?? 'nyc3'})` : 'Not configured'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Connected At</p>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  {doCreds.connectedAt ? new Date(doCreds.connectedAt).toLocaleString() : '—'}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Azure / GCP — coming soon */}
+        {[{ name: 'Azure' }, { name: 'GCP' }].map((provider) => (
           <div
             key={provider.name}
-            className="flex items-center justify-between p-4 bg-slate-900/30 rounded-lg border border-slate-700/20 opacity-60"
+            className="flex items-center justify-between p-4 bg-slate-900/30 rounded-lg border border-slate-700/20 opacity-50"
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-slate-700/30 flex items-center justify-center">
@@ -222,9 +290,7 @@ function CloudProvidersSection() {
                 <p className="text-xs text-slate-600">Coming in Phase 3</p>
               </div>
             </div>
-            <span className="text-xs px-2 py-1 rounded-full bg-slate-700/50 text-slate-500">
-              Planned
-            </span>
+            <span className="text-xs px-2 py-1 rounded-full bg-slate-700/50 text-slate-500">Planned</span>
           </div>
         ))}
       </div>
