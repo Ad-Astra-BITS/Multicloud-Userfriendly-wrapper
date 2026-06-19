@@ -3,6 +3,10 @@
 # dependencies
 backend/node_modules/
 /node_modules
+
+# lock files
+package-lock.json
+backend/package-lock.json
 /.pnp
 .pnp.*
 .yarn/*
