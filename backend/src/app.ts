@@ -29,6 +29,9 @@ app.use(
       'x-do-spaces-secret',
       'x-do-spaces-region',
       'x-do-spaces-bucket',
+      // Google Cloud Platform
+      'x-gcp-project-id',
+      'x-gcp-credentials',
     ],
   }),
 );

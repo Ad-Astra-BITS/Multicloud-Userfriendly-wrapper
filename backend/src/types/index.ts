@@ -164,6 +164,69 @@ export interface DOBillingHistory {
   invoices: DOInvoice[];
 }
 
+// ── Google Cloud Platform Primitives ──────────────────────────────────────────
+
+export type GCPInstanceStatus = 'RUNNING' | 'STOPPED' | 'TERMINATED' | 'PROVISIONING' | 'STAGING' | 'SUSPENDED' | 'SUSPENDING' | 'REPAIRING';
+export type GCPDiskType = 'pd-standard' | 'pd-balanced' | 'pd-ssd' | 'pd-extreme';
+
+// ── Google Cloud Platform Domain Models ──────────────────────────────────────
+
+/**
+ * Unified Compute Engine VM instance model.
+ * Fields match the shared compute schema so the comparison table can render
+ * GCP instances alongside AWS EC2 and DO Droplets.
+ */
+export interface GCPInstanceResource {
+  id: string;
+  name: string;
+  status: GCPInstanceStatus;
+  zone: string;
+  /** e.g. 'n1-standard-1', 'e2-medium' */
+  machineType: string;
+  vcpus: number;
+  /** RAM in megabytes */
+  memory: number;
+  /** Root disk size in gigabytes */
+  diskSizeGb: number;
+  /** Estimated monthly cost in USD */
+  price_monthly: number;
+  /** External IP address if any */
+  externalIp?: string;
+  /** Internal IP address */
+  internalIp?: string;
+  labels?: Record<string, string>;
+}
+
+/** A single GCS bucket */
+export interface GCPBucketResource {
+  name: string;
+  location: string;
+  storageClass: string;
+  createdAt?: string;
+}
+
+/** GCP Cloud SQL instance */
+export interface GCPSqlInstanceResource {
+  name: string;
+  databaseVersion: string;
+  state: string;
+  region: string;
+  tier: string;
+  /** Estimated monthly cost in USD */
+  monthlyCost: number;
+  /** Storage capacity in GB */
+  dataDiskSizeGb: number;
+  ipAddresses?: string[];
+}
+
+/** GCP billing summary */
+export interface GCPBillingInfo {
+  /** Month-to-date estimated spend in USD */
+  monthToDate: number;
+  /** Last 12 months cost breakdown */
+  monthlyCosts: Array<{ month: string; cost: number }>;
+}
+
 // ── API Envelope ──────────────────────────────────────────────────────────────
 
 export interface ApiResponse<T = unknown> {
