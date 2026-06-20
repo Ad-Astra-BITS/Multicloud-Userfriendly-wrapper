@@ -164,6 +164,96 @@ export interface DOBillingHistory {
   invoices: DOInvoice[];
 }
 
+// ── Google Cloud Platform Primitives ──────────────────────────────────────────
+
+export type GCPInstanceStatus = 'RUNNING' | 'STOPPED' | 'TERMINATED' | 'PROVISIONING' | 'STAGING' | 'SUSPENDED' | 'SUSPENDING' | 'REPAIRING';
+
+export interface GCPInstanceResource {
+  id: string;
+  name: string;
+  status: GCPInstanceStatus;
+  zone: string;
+  machineType: string;
+  vcpus: number;
+  memory: number;
+  diskSizeGb: number;
+  price_monthly: number;
+  externalIp?: string;
+  internalIp?: string;
+  labels?: Record<string, string>;
+}
+
+export interface GCPBucketResource {
+  name: string;
+  location: string;
+  storageClass: string;
+  createdAt?: string;
+}
+
+export interface GCPSqlInstanceResource {
+  name: string;
+  databaseVersion: string;
+  state: string;
+  region: string;
+  tier: string;
+  monthlyCost: number;
+  dataDiskSizeGb: number;
+  ipAddresses?: string[];
+}
+
+export interface GCPBillingInfo {
+  monthToDate: number;
+  monthlyCosts: Array<{ month: string; cost: number }>;
+}
+
+// ── Azure Primitives ──────────────────────────────────────────────────────────
+
+export type AzureVMStatus = 'Running' | 'Deallocated' | 'Stopped' | 'Deallocating' | 'Starting' | 'Unknown';
+
+export interface AzureVMResource {
+  id: string;
+  name: string;
+  status: AzureVMStatus;
+  location: string;
+  resourceGroup: string;
+  vmSize: string;
+  vcpus: number;
+  memory: number;
+  osDiskSizeGb: number;
+  price_monthly: number;
+  publicIp?: string;
+  privateIp?: string;
+  tags?: Record<string, string>;
+}
+
+export interface AzureStorageAccountResource {
+  id: string;
+  name: string;
+  location: string;
+  resourceGroup: string;
+  kind: string;
+  skuName: string;
+  accessTier: string;
+  createdAt?: string;
+}
+
+export interface AzureSqlDatabaseResource {
+  id: string;
+  name: string;
+  serverName: string;
+  resourceGroup: string;
+  location: string;
+  status: string;
+  sku: string;
+  maxSizeGb: number;
+  monthlyCost: number;
+}
+
+export interface AzureBillingInfo {
+  monthToDate: number;
+  monthlyCosts: Array<{ month: string; cost: number }>;
+}
+
 // ── API Envelope ──────────────────────────────────────────────────────────────
 
 export interface ApiResponse<T = unknown> {

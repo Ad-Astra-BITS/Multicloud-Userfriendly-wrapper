@@ -3,8 +3,12 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { AWSContextProvider } from '@/context/AWSContext';
 import { DOContextProvider } from '@/context/DOContext';
+import { GCPContextProvider } from '@/context/GCPContext';
+import { AzureContextProvider } from '@/context/AzureContext';
 import ConnectAWSModal from '@/components/ConnectAWSModal';
 import ConnectDOModal from '@/components/ConnectDOModal';
+import ConnectGCPModal from '@/components/ConnectGCPModal';
+import ConnectAzureModal from '@/components/ConnectAzureModal';
 
 /**
  * Root Layout
@@ -36,9 +40,15 @@ export default function RootLayout({
       <body className={`${inter.variable} font-sans antialiased bg-slate-950`}>
         <AWSContextProvider>
           <DOContextProvider>
-            {children}
-            <ConnectAWSModal />
-            <ConnectDOModal />
+            <GCPContextProvider>
+              <AzureContextProvider>
+                {children}
+                <ConnectAWSModal />
+                <ConnectDOModal />
+                <ConnectGCPModal />
+                <ConnectAzureModal />
+              </AzureContextProvider>
+            </GCPContextProvider>
           </DOContextProvider>
         </AWSContextProvider>
       </body>

@@ -30,6 +30,8 @@ import {
 import { api } from '@/lib/api';
 import { useAWS } from '@/context/AWSContext';
 import { useDO } from '@/context/DOContext';
+import { useGCP } from '@/context/GCPContext';
+import { useAzure } from '@/context/AzureContext';
 
 // ── Menu definitions ───────────────────────────────────────────────────────
 
@@ -51,6 +53,20 @@ const doItems = [
   { name: 'Spaces',     href: '/do-spaces',    icon: HardDrive, description: 'Object storage' },
   { name: 'Databases',  href: '/do-databases', icon: Database,  description: 'Managed databases' },
   { name: 'DO Billing', href: '/do-billing',   icon: DollarSign,description: 'Invoices & spend' },
+];
+
+const gcpItems = [
+  { name: 'Compute VMs',   href: '/gcp-instances', icon: Server,    description: 'Compute Engine VMs' },
+  { name: 'Cloud Storage', href: '/gcp-storage',   icon: HardDrive, description: 'Storage buckets' },
+  { name: 'Cloud SQL',     href: '/gcp-sql',       icon: Database,  description: 'Managed databases' },
+  { name: 'GCP Billing',   href: '/gcp-billing',   icon: DollarSign,description: 'Estimated spend' },
+];
+
+const azureItems = [
+  { name: 'Virtual Machines', href: '/azure-vms',     icon: Server,    description: 'Azure VMs' },
+  { name: 'Storage',          href: '/azure-storage',  icon: HardDrive, description: 'Storage accounts' },
+  { name: 'SQL Databases',    href: '/azure-sql',      icon: Database,  description: 'Azure SQL DBs' },
+  { name: 'Azure Billing',    href: '/azure-billing',  icon: DollarSign,description: 'Estimated spend' },
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -114,6 +130,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { isConnected: awsConnected, openConnectModal: openAWSModal } = useAWS();
   const { isConnected: doConnected, openConnectModal: openDOModal } = useDO();
+  const { isConnected: gcpConnected, openConnectModal: openGCPModal } = useGCP();
+  const { isConnected: azureConnected, openConnectModal: openAzureModal } = useAzure();
   const stats = useQuickStats(awsConnected);
 
   return (
@@ -185,6 +203,56 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             >
               <Plug size={16} className="flex-shrink-0 group-hover:text-blue-400" />
               <span className="text-sm">Connect DigitalOcean</span>
+            </button>
+          )}
+
+          {/* ── Google Cloud Platform ──────────────────────────── */}
+          <SectionLabel>
+            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none">
+              <path d="M12.72 5.57l2.24-2.24.14-.94a9.94 9.94 0 0 0-8.01 1.6l1.66 1.66.81-.08a4.31 4.31 0 0 1 3.16 0z" fill="#EA4335"/>
+              <path d="M19.43 8.09a9.98 9.98 0 0 0-3.01-3.46l-2.24 2.24a6.06 6.06 0 0 1 2.21 2.47l2.24-2.24.8.99z" fill="#4285F4"/>
+              <path d="M12 17.93a5.9 5.9 0 0 1-3.57-1.2L6.2 18.97A9.96 9.96 0 0 0 12 21a9.96 9.96 0 0 0 5.8-1.86l-2.24-2.24A5.9 5.9 0 0 1 12 17.93z" fill="#34A853"/>
+              <path d="M5.57 12.72A5.9 5.9 0 0 1 6.07 9.6L3.83 7.36A9.96 9.96 0 0 0 2 12c0 2.03.6 3.92 1.63 5.5l2.24-2.24a5.86 5.86 0 0 1-.3-2.54z" fill="#FBBC05"/>
+            </svg>
+            Google Cloud
+          </SectionLabel>
+
+          {gcpConnected ? (
+            gcpItems.map((item) => (
+              <NavLink key={item.name} item={item} pathname={pathname} onClose={onClose} activeClass="bg-red-500/80 shadow-lg shadow-red-500/20" />
+            ))
+          ) : (
+            <button
+              onClick={() => { onClose(); openGCPModal(); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 hover:text-red-300 hover:bg-slate-800 transition-all duration-200 group"
+            >
+              <Plug size={16} className="flex-shrink-0 group-hover:text-red-400" />
+              <span className="text-sm">Connect GCP</span>
+            </button>
+          )}
+
+          {/* ── Microsoft Azure ─────────────────────────────────── */}
+          <SectionLabel>
+            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none">
+              <rect x="1" y="1" width="10" height="10" rx="1" fill="#F25022"/>
+              <rect x="13" y="1" width="10" height="10" rx="1" fill="#7FBA00"/>
+              <rect x="1" y="13" width="10" height="10" rx="1" fill="#00A4EF"/>
+              <rect x="13" y="13" width="10" height="10" rx="1" fill="#FFB900"/>
+            </svg>
+            Microsoft Azure
+          </SectionLabel>
+
+          {azureConnected ? (
+            azureItems.map((item) => (
+              <NavLink key={item.name} item={item} pathname={pathname} onClose={onClose} activeClass="bg-cyan-600/80 shadow-lg shadow-cyan-600/20" />
+            ))
+          ) : (
+            <button
+              onClick={() => { onClose(); openAzureModal(); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 hover:text-cyan-300 hover:bg-slate-800 transition-all duration-200 group"
+            >
+              <Plug size={16} className="flex-shrink-0 group-hover:text-cyan-400" />
+              <span className="text-sm">Connect Azure</span>
             </button>
           )}
         </nav>

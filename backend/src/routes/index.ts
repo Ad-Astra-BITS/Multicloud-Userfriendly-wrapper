@@ -6,6 +6,8 @@ import s3LifecycleRouter from './s3Lifecycle';
 import killSwitchRouter from './killSwitch';
 import awsConnectRouter from './awsConnect';
 import digitalOceanRouter from './digitalocean';
+import gcpRouter from './gcp';
+import azureRouter from './azure';
 
 const router = Router();
 
@@ -16,6 +18,8 @@ router.use('/s3-lifecycle', s3LifecycleRouter);
 router.use('/kill-switch', killSwitchRouter);
 router.use('/aws', awsConnectRouter);
 router.use('/do', digitalOceanRouter);
+router.use('/gcp', gcpRouter);
+router.use('/azure', azureRouter);
 
 /** Health check */
 router.get('/health', (_req, res) => {
