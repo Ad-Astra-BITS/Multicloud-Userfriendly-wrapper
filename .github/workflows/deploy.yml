@@ -1,0 +1,99 @@
+name: CI/CD — Ad Astra
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ──────────────────────────────────────────────
+  # 1. Run backend tests
+  # ──────────────────────────────────────────────
+  test-backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  # ──────────────────────────────────────────────
+  # 2. Verify frontend builds successfully
+  # ──────────────────────────────────────────────
+  build-frontend:
+    name: Frontend Build Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://ad-astra.openschools.space/api
+
+  # ──────────────────────────────────────────────
+  # 3. Deploy to EC2 (main branch only)
+  # ──────────────────────────────────────────────
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: [test-backend, build-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            APP_DIR="${{ secrets.EC2_APP_DIR }}"
+
+            echo "→ Pulling latest code..."
+            cd "$APP_DIR"
+            git pull origin main
+
+            echo "→ Installing & building backend..."
+            cd "$APP_DIR/backend"
+            npm ci
+            npm run build
+            npx prisma generate
+            npx prisma migrate deploy
+
+            echo "→ Installing & building frontend..."
+            cd "$APP_DIR"
+            npm ci
+            NEXT_PUBLIC_API_URL=https://ad-astra.openschools.space/api npm run build
+
+            echo "→ Restarting services via PM2..."
+            pm2 reload ecosystem.config.js --update-env 2>/dev/null || pm2 start ecosystem.config.js
+            pm2 save
+
+            echo "✓ Deployed successfully"
