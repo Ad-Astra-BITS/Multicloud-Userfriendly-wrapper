@@ -8,7 +8,7 @@ on:
 
 jobs:
   # ──────────────────────────────────────────────
-  # 1. Run backend tests
+  # 1. Backend tests (all branches)
   # ──────────────────────────────────────────────
   test-backend:
     name: Backend Tests
@@ -16,44 +16,37 @@ jobs:
     defaults:
       run:
         working-directory: backend
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run tests
-        run: npm test
+      - run: npm install
+      - run: npm test
 
   # ──────────────────────────────────────────────
-  # 2. Verify frontend builds successfully
+  # 2. Frontend build check (all branches)
   # ──────────────────────────────────────────────
   build-frontend:
     name: Frontend Build Check
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build
-        run: npm run build
+      - run: npm install
+      - run: npm run build
         env:
           NEXT_PUBLIC_API_URL: https://ad-astra.openschools.space/api
 
   # ──────────────────────────────────────────────
-  # 3. Deploy to EC2 (main branch only)
+  # 3. Build on CI runner + deploy to EC2
+  #    (main branch only, after both jobs pass)
+  #
+  #    tsc + Next.js build run here on GitHub's
+  #    7 GB RAM runner — NOT on the EC2 (1.9 GB).
+  #    Only compiled output is synced to the server.
   # ──────────────────────────────────────────────
   deploy:
     name: Deploy to EC2
@@ -62,58 +55,84 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -e
-            APP_DIR="/var/www/ad-astra"
-            REPO_URL="https://github.com/Ad-Astra-BITS/Multicloud-Userfriendly-wrapper.git"
+          node-version: '22'
 
-            # ── Clone on first deploy, pull on subsequent ones ──
-            if [ ! -d "$APP_DIR/.git" ]; then
-              echo "→ First deploy: cloning repository..."
-              sudo mkdir -p "$APP_DIR"
-              sudo chown ubuntu:ubuntu "$APP_DIR"
-              git clone "$REPO_URL" "$APP_DIR"
-            else
-              echo "→ Pulling latest changes..."
-              cd "$APP_DIR"
-              git pull origin main
-            fi
+      # ── Compile backend on CI runner ──
+      - name: Build backend
+        working-directory: backend
+        run: |
+          npm install
+          npm run build
+          npx prisma generate
 
-            # ── Write backend .env from GitHub secrets ──
-            printf 'PORT=4000\nNODE_ENV=production\nDATABASE_URL=%s\n' '${{ secrets.DATABASE_URL }}' > "$APP_DIR/backend/.env"
+      # ── Build Next.js on CI runner ──
+      - name: Build frontend
+        run: npm install && npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://ad-astra.openschools.space/api
 
-            # ── Install Nginx config (only if not already done) ──
-            if [ ! -f /etc/nginx/sites-enabled/ad-astra ]; then
-              echo "→ Configuring Nginx..."
-              sudo cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/ad-astra
-              sudo ln -sf /etc/nginx/sites-available/ad-astra /etc/nginx/sites-enabled/ad-astra
-              sudo nginx -t && sudo systemctl reload nginx
-            fi
+      # ── SSH setup ──
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-            # ── Build backend ──
-            echo "→ Building backend..."
-            cd "$APP_DIR/backend"
-            npm install
-            npm run build
-            npx prisma generate
-            npx prisma migrate deploy
+      # ── Ensure server directory + rsync installed ──
+      - name: Prepare server
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "
+            sudo mkdir -p /var/www/ad-astra && sudo chown ubuntu:ubuntu /var/www/ad-astra
+            which rsync > /dev/null 2>&1 || sudo apt-get install -y rsync
+          "
 
-            # ── Build frontend ──
-            echo "→ Building frontend..."
-            cd "$APP_DIR"
-            npm install
-            NEXT_PUBLIC_API_URL=https://ad-astra.openschools.space/api npm run build
+      # ── Sync source + compiled output (no node_modules) ──
+      - name: Sync files to server
+        run: |
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='backend/node_modules' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/var/www/ad-astra/
 
-            # ── Start or reload PM2 ──
-            echo "→ Restarting services..."
-            cd "$APP_DIR"
-            pm2 reload ecosystem.config.js --update-env 2>/dev/null || pm2 start ecosystem.config.js
-            pm2 save
+      # ── Server: prod deps only + migrate + restart ──
+      - name: Finalize deployment
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} bash << 'ENDSSH'
+          set -e
+          APP_DIR="/var/www/ad-astra"
 
-            echo "✓ Deployed successfully"
+          echo "→ Writing .env..."
+          echo "PORT=4000" > "$APP_DIR/backend/.env"
+          echo "NODE_ENV=production" >> "$APP_DIR/backend/.env"
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> "$APP_DIR/backend/.env"
+
+          echo "→ Installing backend production deps..."
+          cd "$APP_DIR/backend"
+          npm install --omit=dev
+          npx prisma migrate deploy
+
+          echo "→ Installing frontend production deps..."
+          cd "$APP_DIR"
+          npm install --omit=dev
+
+          echo "→ Configuring Nginx (first deploy only)..."
+          if [ ! -f /etc/nginx/sites-enabled/ad-astra ]; then
+            sudo cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/ad-astra
+            sudo ln -sf /etc/nginx/sites-available/ad-astra /etc/nginx/sites-enabled/ad-astra
+            sudo nginx -t && sudo systemctl reload nginx
+          fi
+
+          echo "→ Restarting services..."
+          pm2 reload "$APP_DIR/ecosystem.config.js" --update-env 2>/dev/null \
+            || pm2 start "$APP_DIR/ecosystem.config.js"
+          pm2 save
+
+          echo "✓ Deployed successfully"
+          ENDSSH
