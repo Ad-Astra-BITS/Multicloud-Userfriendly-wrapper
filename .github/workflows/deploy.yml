@@ -120,6 +120,7 @@ jobs:
 
           echo "→ Installing frontend production deps..."
           cd "$APP_DIR"
+          rm -rf node_modules
           npm install --omit=dev
 
           echo "→ Configuring Nginx (first deploy only)..."
