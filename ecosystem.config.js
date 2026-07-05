@@ -2,8 +2,7 @@ module.exports = {
   apps: [
     {
       name: 'ad-astra-backend',
-      script: './backend/dist/server.js',
-      cwd: '/var/www/ad-astra',
+      script: '/var/www/ad-astra/backend/dist/server.js',
       env: {
         NODE_ENV: 'production',
         PORT: 4000,

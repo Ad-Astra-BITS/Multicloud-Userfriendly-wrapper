@@ -74,25 +74,53 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
-            APP_DIR="${{ secrets.EC2_APP_DIR }}"
+            APP_DIR="/var/www/ad-astra"
+            REPO_URL="https://github.com/Ad-Astra-BITS/Multicloud-Userfriendly-wrapper.git"
 
-            echo "→ Pulling latest code..."
-            cd "$APP_DIR"
-            git pull origin main
+            # ── Clone on first deploy, pull on subsequent ones ──
+            if [ ! -d "$APP_DIR/.git" ]; then
+              echo "→ First deploy: cloning repository..."
+              sudo mkdir -p "$APP_DIR"
+              sudo chown ubuntu:ubuntu "$APP_DIR"
+              git clone "$REPO_URL" "$APP_DIR"
+            else
+              echo "→ Pulling latest changes..."
+              cd "$APP_DIR"
+              git pull origin main
+            fi
 
-            echo "→ Installing & building backend..."
+            # ── Write backend .env from GitHub secrets ──
+            cat > "$APP_DIR/backend/.env" << 'EOF'
+            PORT=4000
+            NODE_ENV=production
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            EOF
+
+            # ── Install Nginx config (only if not already done) ──
+            if [ ! -f /etc/nginx/sites-enabled/ad-astra ]; then
+              echo "→ Configuring Nginx..."
+              sudo cp "$APP_DIR/deploy/nginx.conf" /etc/nginx/sites-available/ad-astra
+              sudo ln -sf /etc/nginx/sites-available/ad-astra /etc/nginx/sites-enabled/ad-astra
+              sudo nginx -t && sudo systemctl reload nginx
+            fi
+
+            # ── Build backend ──
+            echo "→ Building backend..."
             cd "$APP_DIR/backend"
             npm ci
             npm run build
             npx prisma generate
             npx prisma migrate deploy
 
-            echo "→ Installing & building frontend..."
+            # ── Build frontend ──
+            echo "→ Building frontend..."
             cd "$APP_DIR"
             npm ci
             NEXT_PUBLIC_API_URL=https://ad-astra.openschools.space/api npm run build
 
-            echo "→ Restarting services via PM2..."
+            # ── Start or reload PM2 ──
+            echo "→ Restarting services..."
+            cd "$APP_DIR"
             pm2 reload ecosystem.config.js --update-env 2>/dev/null || pm2 start ecosystem.config.js
             pm2 save
 
