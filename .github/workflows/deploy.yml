@@ -116,7 +116,7 @@ jobs:
           echo "→ Installing backend production deps..."
           cd "$APP_DIR/backend"
           npm install --omit=dev
-          npx prisma migrate deploy
+          npx prisma db push --accept-data-loss
 
           echo "→ Installing frontend production deps..."
           cd "$APP_DIR"
