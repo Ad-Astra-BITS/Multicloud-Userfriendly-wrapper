@@ -181,7 +181,7 @@ export default function DOBillingPage() {
                   <Tooltip
                     contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: 8 }}
                     labelStyle={{ color: '#e2e8f0' }}
-                    formatter={(v: number) => [`$${v.toFixed(2)}`, 'Cost']}
+                    formatter={(v) => [`$${Number(v ?? 0).toFixed(2)}`, 'Cost']}
                   />
                   <Bar dataKey="cost" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 </BarChart>
