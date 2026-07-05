@@ -47,7 +47,7 @@ import { ec2, s3, rds, costExplorer, cloudWatch, AwsClients } from '../config/aw
 import { Resource, CostRecord, ResourceStatus } from '../types';
 
 // Default clients (env-var credentials). Pass `clients` to use per-request creds.
-type Clients = Pick<AwsClients, 'ec2' | 's3' | 'rds' | 'costExplorer' | 'cloudWatch'>;
+export type Clients = Pick<AwsClients, 'ec2' | 's3' | 'rds' | 'costExplorer' | 'cloudWatch'>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EC2

@@ -6,11 +6,8 @@
  */
 
 import { prisma } from '../config/database';
-import { getMonthlyCostsByService, getTotalCostPerMonth, listEC2Instances, listS3Buckets, listRDSInstances } from './awsResourceService';
+import { getMonthlyCostsByService, getTotalCostPerMonth, listEC2Instances, listS3Buckets, listRDSInstances, Clients } from './awsResourceService';
 import { DashboardSummary, CostRecord } from '../types';
-import { AwsClients } from '../config/aws';
-
-type Clients = Partial<AwsClients>;
 
 export async function getCostBreakdown(months = 6, clients?: Clients): Promise<CostRecord[]> {
   const records = await getMonthlyCostsByService(months, clients);

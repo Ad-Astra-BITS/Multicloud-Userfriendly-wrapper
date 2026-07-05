@@ -30,7 +30,7 @@ export async function refresh(req: Request, res: Response, next: NextFunction): 
 /** POST /api/recommendations/:id/apply — marks a recommendation as applied */
 export async function apply(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const data = await applyRecommendation(req.params.id);
+    const data = await applyRecommendation(String(req.params.id));
     res.json({ success: true, data, message: 'Recommendation marked as applied' } satisfies ApiResponse);
   } catch (err) {
     next(err);
@@ -40,7 +40,7 @@ export async function apply(req: Request, res: Response, next: NextFunction): Pr
 /** DELETE /api/recommendations/:id — dismisses a recommendation */
 export async function dismiss(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const data = await dismissRecommendation(req.params.id);
+    const data = await dismissRecommendation(String(req.params.id));
     res.json({ success: true, data, message: 'Recommendation dismissed' } satisfies ApiResponse);
   } catch (err) {
     next(err);

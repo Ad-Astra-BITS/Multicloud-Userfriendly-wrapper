@@ -17,11 +17,11 @@ import {
   listS3Buckets,
   listRDSInstances,
   getEC2CPUUtilization,
+  Clients,
 } from './awsResourceService';
 import { Recommendation, Priority } from '../types';
-import { AwsClients } from '../config/aws';
 
-type Clients = Partial<AwsClients>;
+type NewRec = Pick<Recommendation, 'resourceId' | 'title' | 'description' | 'currentTier' | 'recommendedTier' | 'estimatedSavings' | 'priority'>;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ export async function generateRecommendations(clients?: Clients): Promise<Recomm
     analyseRDSUtilisation(rdsResources),
   ]);
 
-  const newRecs = rules.flat();
+  const newRecs: NewRec[] = rules.flat();
 
   // Upsert each recommendation (idempotent on resourceId + title)
   for (const rec of newRecs) {
@@ -106,8 +106,8 @@ export async function dismissRecommendation(id: string): Promise<Recommendation>
 async function analyseEC2Utilisation(
   resources: Awaited<ReturnType<typeof listEC2Instances>>,
   clients?: Clients,
-): Promise<Partial<Recommendation>[]> {
-  const recs: Partial<Recommendation>[] = [];
+): Promise<NewRec[]> {
+  const recs: NewRec[] = [];
 
   for (const r of resources) {
     if (r.status !== 'running') continue;
@@ -130,7 +130,7 @@ async function analyseEC2Utilisation(
 
 async function analyseStoppedEC2(
   resources: Awaited<ReturnType<typeof listEC2Instances>>,
-): Promise<Partial<Recommendation>[]> {
+): Promise<NewRec[]> {
   return resources
     .filter((r) => r.status === 'stopped')
     .map((r) => ({
@@ -146,7 +146,7 @@ async function analyseStoppedEC2(
 
 async function analyseS3Tiers(
   resources: Awaited<ReturnType<typeof listS3Buckets>>,
-): Promise<Partial<Recommendation>[]> {
+): Promise<NewRec[]> {
   // For now we flag any S3 bucket as a potential Glacier candidate.
   // A real implementation would check LastModified dates via S3 inventory.
   return resources.slice(0, 5).map((r) => ({
@@ -162,7 +162,7 @@ async function analyseS3Tiers(
 
 async function analyseRDSUtilisation(
   resources: Awaited<ReturnType<typeof listRDSInstances>>,
-): Promise<Partial<Recommendation>[]> {
+): Promise<NewRec[]> {
   return resources
     .filter((r) => r.status === 'running')
     .map((r) => ({

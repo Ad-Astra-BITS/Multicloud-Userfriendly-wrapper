@@ -19,7 +19,7 @@ export async function listBuckets(req: Request, res: Response, next: NextFunctio
 /** POST /api/s3-lifecycle/:bucketName/apply — apply a specific tier to one bucket */
 export async function applyBucket(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { bucketName } = req.params;
+    const bucketName = String(req.params.bucketName);
     const { targetTier } = req.body as { targetTier: S3Tier };
 
     const validTiers: S3Tier[] = ['Intelligent Tiering', 'Glacier', 'Glacier Deep Archive'];

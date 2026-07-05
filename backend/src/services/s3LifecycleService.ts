@@ -45,7 +45,7 @@ export async function listBucketsWithRecommendations(): Promise<S3Bucket[]> {
 
     enriched.push({
       id: r.id,
-      awsBucketName: r.awsBucketName ?? r.name,
+      awsBucketName: r.awsId,
       currentTier,
       recommendedTier: estimatedSavings > 0 ? recommendedTier : undefined,
       sizeBytes,

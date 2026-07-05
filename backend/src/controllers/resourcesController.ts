@@ -21,7 +21,7 @@ export async function getAllResources(req: Request, res: Response, next: NextFun
 /** GET /api/resources/:type — filtered by type (ec2 | s3 | rds) */
 export async function getResourcesByType(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const type = (req.params.type ?? '').toUpperCase() as ResourceType;
+    const type = String(req.params.type ?? '').toUpperCase() as ResourceType;
     let data: Resource[] = [];
 
     if (type === 'EC2') data = await listEC2Instances(req.awsClients);
@@ -56,7 +56,7 @@ export async function getAlerts(req: Request, res: Response, next: NextFunction)
 export async function resolveAlert(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const alert = await prisma.alert.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data: { resolved: true, resolvedAt: new Date() },
     });
     res.json({ success: true, data: alert, message: 'Alert resolved' } satisfies ApiResponse);
