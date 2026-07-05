@@ -38,7 +38,7 @@ jobs:
       - run: npm install
       - run: npm run build
         env:
-          NEXT_PUBLIC_API_URL: https://ad-astra.openschools.space/api
+          NEXT_PUBLIC_API_URL: https://adastra.openschools.space/api
 
   # ──────────────────────────────────────────────
   # 3. Build on CI runner + deploy to EC2
@@ -73,7 +73,7 @@ jobs:
       - name: Build frontend
         run: npm install && npm run build
         env:
-          NEXT_PUBLIC_API_URL: https://ad-astra.openschools.space/api
+          NEXT_PUBLIC_API_URL: https://adastra.openschools.space/api
 
       # ── SSH setup ──
       - name: Configure SSH
