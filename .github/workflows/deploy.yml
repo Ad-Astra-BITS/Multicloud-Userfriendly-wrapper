@@ -90,11 +90,7 @@ jobs:
             fi
 
             # ── Write backend .env from GitHub secrets ──
-            cat > "$APP_DIR/backend/.env" << 'EOF'
-            PORT=4000
-            NODE_ENV=production
-            DATABASE_URL=${{ secrets.DATABASE_URL }}
-            EOF
+            printf 'PORT=4000\nNODE_ENV=production\nDATABASE_URL=%s\n' '${{ secrets.DATABASE_URL }}' > "$APP_DIR/backend/.env"
 
             # ── Install Nginx config (only if not already done) ──
             if [ ! -f /etc/nginx/sites-enabled/ad-astra ]; then
